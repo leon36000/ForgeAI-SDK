@@ -1,0 +1,35 @@
+{
+  "schema_version": "forgeai.policy.v0.1.1",
+  "fail_closed": true,
+  "max_parallel_agents": 4,
+  "nested_agents": false,
+  "external_modes": {
+    "CONSULT": "read-only",
+    "AUDIT": "read-only",
+    "REVIEW": "read-only",
+    "EXECUTE": "qualified-harness-and-verified-sandbox"
+  },
+  "protected_paths": [
+    ".git/**",
+    ".forgeai/**",
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".claude/agents/**",
+    ".env",
+    ".env.*",
+    "**/.env",
+    "**/.env.*",
+    "**/*.pem",
+    "**/*.key",
+    "**/id_rsa",
+    "**/id_rsa.*"
+  ],
+  "roles": {
+    "orchestrator": {"write": false,"dispatch": true},
+    "writer": {"write": true,"dispatch": false},
+    "reviewer": {"write": false,"dispatch": false},
+    "auditor": {"write": false,"dispatch": false},
+    "security": {"write": false,"dispatch": false},
+    "verifier": {"write": false,"dispatch": false}
+  }
+}

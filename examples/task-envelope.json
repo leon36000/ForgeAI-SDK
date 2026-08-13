@@ -1,0 +1,54 @@
+{
+  "schema_version": "forgeai.task-envelope.v0.1.1",
+  "task_id": "example-r1",
+  "title": "Example isolated change",
+  "objective": "Implement one bounded change and prove it.",
+  "role": "writer",
+  "mode": "EXECUTE",
+  "risk": "R1",
+  "task_kind": "feature",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "workspace": "/tmp/forgeai-example-repo",
+  "allowed_paths": [
+    "src/**",
+    "tests/**"
+  ],
+  "denied_paths": [
+    "src/secrets/**"
+  ],
+  "allowed_bash_commands": [
+    "npm test",
+    "npm run lint"
+  ],
+  "required_test_commands": [
+    "npm test",
+    "npm run lint"
+  ],
+  "allowed_network_hosts": [],
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "statement": "All tests pass.",
+      "verification": "Run npm test and retain the gate record."
+    }
+  ],
+  "execution": {
+    "harness": "claude-code",
+    "qualified": true,
+    "sandbox_required": true,
+    "sandbox_verified": true
+  },
+  "delegation": {
+    "agent_depth": 0,
+    "max_parallel_agents": 1,
+    "allow_nested_agents": false
+  },
+  "evidence_dir": "/tmp/forgeai-example-repo/.forgeai/evidence/example-r1",
+  "created_at": "2026-08-13T00:00:00.000Z",
+  "expires_at": "2099-08-13T00:00:00.000Z",
+  "metadata": {
+    "owner": "example",
+    "source": "starter-kit"
+  },
+  "allowed_mcp_tools": []
+}

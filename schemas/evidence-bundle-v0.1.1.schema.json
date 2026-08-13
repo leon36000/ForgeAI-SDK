@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgeai.local/schemas/evidence-bundle-v0.1.1.json",
+  "title": "ForgeAI EvidenceBundle v0.1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_envelope_hash",
+    "base_commit",
+    "final_commit",
+    "generated_at",
+    "changed_files",
+    "git",
+    "gates",
+    "acceptance",
+    "reviews",
+    "findings",
+    "artifacts",
+    "ledger_head",
+    "human_approval",
+    "bundle_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "forgeai.evidence-bundle.v0.1.1"},
+    "task_id": {"type": "string"},
+    "task_envelope_hash": {"type": "string","pattern": "^[0-9a-f]{64}$"},
+    "base_commit": {"type": "string"},
+    "final_commit": {"type": "string"},
+    "generated_at": {"type": "string","format": "date-time"},
+    "changed_files": {"type": "array","items": {"type": "string"}},
+    "git": {"type": "object"},
+    "gates": {"type": "array","items": {"type": "object"}},
+    "acceptance": {"type": "array","items": {"type": "object"}},
+    "reviews": {"type": "array","items": {"type": "object"}},
+    "findings": {"type": "array","items": {"type": "object"}},
+    "artifacts": {"type": "array","items": {"type": "object"}},
+    "ledger_head": {"type": "object"},
+    "human_approval": {"type": ["object","null"]},
+    "bundle_hash": {"type": "string","pattern": "^[0-9a-f]{64}$"}
+  }
+}
