@@ -8,6 +8,7 @@
 - Lie chaque review indépendante au `final_commit` et scelle son evidence hash.
 - Borne contrats, bundles, CLI, JSON, inventaires, artefacts, sorties de processus et ledger.
 - Durcit l’installeur par preflight, staging, rollback et refus des symlinks ambigus.
+- Installe les hooks Claude Code en forme exec native `command` + `args`, ancre `PreToolUse`, migre les anciens hooks ForgeAI et préserve les hooks tiers.
 - Rend CodeQL/SARIF fail-closed dans GitHub Actions et ajoute les régressions adversariales correspondantes.
 
 ## 0.1.3 — 2026-08-13

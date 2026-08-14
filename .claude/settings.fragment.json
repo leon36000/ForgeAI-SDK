@@ -5,7 +5,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" SessionStart",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "SessionStart"
+            ],
             "timeout": 15
           }
         ]
@@ -13,11 +17,15 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit|MultiEdit|Bash|WebFetch|Read|Glob|Grep|LS|mcp__.*",
+        "matcher": "^(?:Edit|Write|NotebookEdit|MultiEdit|Bash|WebFetch|Read|Glob|Grep|LS|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" PreToolUse",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "PreToolUse"
+            ],
             "timeout": 15
           }
         ]
@@ -28,7 +36,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" PostToolUse",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "PostToolUse"
+            ],
             "timeout": 15
           }
         ]
@@ -39,7 +51,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" SubagentStop",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "SubagentStop"
+            ],
             "timeout": 15
           }
         ]
@@ -50,7 +66,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" TaskCompleted",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "TaskCompleted"
+            ],
             "timeout": 15
           }
         ]
@@ -61,7 +81,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" Stop",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "Stop"
+            ],
             "timeout": 15
           }
         ]
@@ -72,7 +96,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs\" PreCompact",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/forgeai-hook.mjs",
+              "PreCompact"
+            ],
             "timeout": 15
           }
         ]
