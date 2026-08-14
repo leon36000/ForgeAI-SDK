@@ -11,6 +11,7 @@ permissions:
 env:
   BASE_SHA: 455f9e567e480e87972a2f5b1588cbc73c4a3e84
   EXPECTED_TREE: 3220b75270bed192a22a8e24bf3f3a13afda4cbf
+  PATCH_SHA256: 81245951b8d29a94cf2b132697e840b907e9b28d1c8fe3d91fe83fc69a34d101
   TARGET_BRANCH: forgeai/foundation-0.1.4
 
 jobs:
@@ -28,12 +29,14 @@ jobs:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
           path: release
-      - name: Decode and validate patch container
+      - name: Reassemble and verify patch
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode transport/.forgeai-release/codeql-cleanup-0.1.4.patch.gz.b64 > "$RUNNER_TEMP/codeql-cleanup.patch.gz"
-          sha256sum "$RUNNER_TEMP/codeql-cleanup.patch.gz"
+          cat transport/.forgeai-release/codeql-cleanup/chunk-*.b64 > "$RUNNER_TEMP/codeql-cleanup.patch.gz.b64"
+          test "$(wc -c < "$RUNNER_TEMP/codeql-cleanup.patch.gz.b64")" -eq 8484
+          base64 --decode "$RUNNER_TEMP/codeql-cleanup.patch.gz.b64" > "$RUNNER_TEMP/codeql-cleanup.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/codeql-cleanup.patch.gz" | sha256sum --check --strict
           gzip --test "$RUNNER_TEMP/codeql-cleanup.patch.gz"
       - name: Refuse a moved target branch
         working-directory: release
