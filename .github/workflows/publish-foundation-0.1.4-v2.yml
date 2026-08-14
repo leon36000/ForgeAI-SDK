@@ -54,21 +54,24 @@ jobs:
             .forgeai-release/0.1.4/chunk-15.b64
             .forgeai-release/0.1.4/chunk-16.b64
             .forgeai-release/0.1.4/chunk-17.b64
-            .forgeai-release/0.1.4/chunk-18.b64
+            .forgeai-release/0.1.4/chunk-18a.b64
+            .forgeai-release/0.1.4/chunk-18b.b64
             .forgeai-release/0.1.4/chunk-19.b64
             .forgeai-release/0.1.4/chunk-20.b64
             .forgeai-release/0.1.4/chunk-21.b64
           )
-          test "${#parts[@]}" -eq 23
+          test "${#parts[@]}" -eq 24
           actual_count="$(find .forgeai-release/0.1.4 -maxdepth 1 -type f -name 'chunk-*.b64' | wc -l | tr -d '[:space:]')"
-          test "$actual_count" -eq 23
-          for part in "${parts[@]}"; do test -f "$part"; done
-          for part in "${parts[@]:0:9}" "${parts[@]:11:11}"; do
-            test "$(wc -c < "$part" | tr -d '[:space:]')" -eq 4000
+          test "$actual_count" -eq 24
+          for part in "${parts[@]}"; do
+            test -f "$part"
+            case "$(basename "$part")" in
+              chunk-09a.b64|chunk-09b.b64|chunk-18a.b64|chunk-18b.b64) expected_size=2000 ;;
+              chunk-21.b64) expected_size=2904 ;;
+              *) expected_size=4000 ;;
+            esac
+            test "$(wc -c < "$part" | tr -d '[:space:]')" -eq "$expected_size"
           done
-          test "$(wc -c < .forgeai-release/0.1.4/chunk-09a.b64 | tr -d '[:space:]')" -eq 2000
-          test "$(wc -c < .forgeai-release/0.1.4/chunk-09b.b64 | tr -d '[:space:]')" -eq 2000
-          test "$(wc -c < .forgeai-release/0.1.4/chunk-21.b64 | tr -d '[:space:]')" -eq 2904
           sha256sum --check --strict .forgeai-release/0.1.4/chunks.sha256
           cat "${parts[@]}" > "$RUNNER_TEMP/foundation-0.1.4.patch.b64"
           printf '%s  %s\n' "$BASE64_SHA256" "$RUNNER_TEMP/foundation-0.1.4.patch.b64" | sha256sum --check --strict
