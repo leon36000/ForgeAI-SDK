@@ -1,0 +1,97 @@
+name: forgeai-sdk-install-smoke
+
+on:
+  push:
+    branches:
+      - forgeai/sdk-install-smoke-0.2.0-alpha.1
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
+  RELEASE_TREE: 205910a0e3828d68b758e8378272fde150aa5698
+  SDK_PACKAGE: '@anthropic-ai/claude-agent-sdk'
+  SDK_VERSION: '0.3.232'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact control-plane HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 1
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+      - name: Install exact SDK without persisting dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts "$SDK_PACKAGE@$SDK_VERSION"
+          test ! -e package-lock.json
+          test "$(node -p "require('./node_modules/@anthropic-ai/claude-agent-sdk/package.json').version")" = "$SDK_VERSION"
+      - name: Run control-plane doctor and import smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sdk-smoke-evidence
+          npm run control-plane -- doctor | tee sdk-smoke-evidence/doctor.json
+          node --input-type=module - <<'NODE' | tee sdk-smoke-evidence/import.json
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          const require = createRequire(import.meta.url);
+          const pkg = require('./node_modules/@anthropic-ai/claude-agent-sdk/package.json');
+          const sdk = await import('@anthropic-ai/claude-agent-sdk');
+          const entry = require.resolve('@anthropic-ai/claude-agent-sdk');
+          const report = {
+            schema_version: 'forgeai.sdk-install-smoke.v1',
+            release_sha: process.env.RELEASE_SHA,
+            release_tree: process.env.RELEASE_TREE,
+            package: pkg.name,
+            version: pkg.version,
+            entry,
+            query_export: typeof sdk.query,
+            node: process.version,
+            platform: process.platform,
+            arch: process.arch,
+          };
+          report.report_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+          console.log(JSON.stringify(report, null, 2));
+          writeFileSync('sdk-smoke-evidence/import.json', `${JSON.stringify(report, null, 2)}\n`);
+          if (pkg.name !== process.env.SDK_PACKAGE || pkg.version !== process.env.SDK_VERSION || typeof sdk.query !== 'function') process.exit(1);
+          NODE
+          node -e "const r=require('./sdk-smoke-evidence/doctor.json'); if(r.status!=='PASS'||r.expected.version!==process.env.SDK_VERSION||r.installed.version!==process.env.SDK_VERSION) process.exit(1)"
+      - name: Re-run full release verification with SDK installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify | tee sdk-smoke-evidence/verification.log
+          grep -q '^PASS ' verification/VERIFIED
+          git status --porcelain=v1 --untracked-files=all | grep -v '^?? sdk-smoke-evidence/' | tee sdk-smoke-evidence/git-status.txt
+          test ! -s sdk-smoke-evidence/git-status.txt
+      - name: Seal smoke evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum sdk-smoke-evidence/doctor.json sdk-smoke-evidence/import.json sdk-smoke-evidence/verification.log > sdk-smoke-evidence/SHA256SUMS.txt
+          cat sdk-smoke-evidence/SHA256SUMS.txt
+      - name: Upload SDK smoke evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-sdk-install-smoke-f071cae6
+          retention-days: 14
+          if-no-files-found: error
+          path: sdk-smoke-evidence
