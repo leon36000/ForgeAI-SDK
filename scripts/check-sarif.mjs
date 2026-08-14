@@ -1,0 +1,4 @@
+import { resolve } from 'node:path';
+import { collectRegularFiles } from '../src/file-tree.mjs';
+import { readJson } from '../src/utils.mjs';
+const root=resolve(process.argv[2]??'codeql-results');const files=await collectRegularFiles(root,{include:path=>path.endsWith('.sarif'),maxFiles:1000});if(files.length===0)throw new Error('no SARIF files found');let results=0;for(const file of files){const sarif=await readJson(file.absolute,{maxBytes:64*1024*1024});if(sarif.version!=='2.1.0'||!Array.isArray(sarif.runs))throw new Error(`${file.relative}: invalid SARIF 2.1.0 document`);for(const run of sarif.runs)results+=Array.isArray(run.results)?run.results.length:0;}if(results>0){process.stderr.write(`CodeQL BLOCKED: ${results} SARIF result(s)\n`);process.exit(2);}process.stdout.write(`CodeQL PASS (${files.length} SARIF file(s), 0 results)\n`);

@@ -48,7 +48,9 @@
   "expires_at": "2099-08-13T00:00:00.000Z",
   "metadata": {
     "owner": "example",
-    "source": "starter-kit"
+    "source": "starter-kit",
+    "writer_model": "qualified-writer",
+    "writer_session_id": "example-writer-session"
   },
   "allowed_mcp_tools": []
 }

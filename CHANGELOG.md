@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4 — 2026-08-14
+
+- Remplace les globs regex dynamiques par un automate borné, fermant le risque ReDoS.
+- Exécute les gates par argv avec `shell:false`; bloque wrappers shell, protocoles réseau non HTTP(S), suppressions récursives dangereuses et variantes de `git clean -f`.
+- Ajoute des lectures no-follow stables, des parcours d’arbre bornés et des écritures atomiques pour fermer les races TOCTOU confirmées par CodeQL.
+- Lie chaque review indépendante au `final_commit` et scelle son evidence hash.
+- Borne contrats, bundles, CLI, JSON, inventaires, artefacts, sorties de processus et ledger.
+- Durcit l’installeur par preflight, staging, rollback et refus des symlinks ambigus.
+- Rend CodeQL/SARIF fail-closed dans GitHub Actions et ajoute les régressions adversariales correspondantes.
+
 ## 0.1.3 — 2026-08-13
 
 - Définit l’indépendance du reviewer par contexte/session fraîche plutôt que par modèle différent; le même modèle peut reviewer avec une session indépendante.

@@ -62,7 +62,7 @@ export function sampleEvidence(task, overrides = {}) {
     git: { head: task.base_commit, clean: true, base_is_ancestor: true },
     gates: task.required_test_commands.map((command, index) => ({ id: `gate-${index}`, category: 'unit', command, status: 'PASS', exit_code: 0, duration_ms: 1, stdout_sha256: 'a'.repeat(64), stderr_sha256: 'b'.repeat(64) })),
     acceptance: task.acceptance_criteria.map((criterion) => ({ id: criterion.id, status: 'PASS', evidence: 'gate-0' })),
-    reviews: [{ role: 'reviewer', model: 'qualified-reviewer', session_id: 'reviewer-session', verdict: 'PASS', context_fresh: true, findings_count: 0, evidence_hash: 'c'.repeat(64) }],
+    reviews: [{ role: 'reviewer', model: 'qualified-reviewer', session_id: 'reviewer-session', verdict: 'PASS', context_fresh: true, findings_count: 0, evidence_hash: 'c'.repeat(64), final_commit: task.base_commit }],
     findings: [],
     artifacts: [],
     ledger_head: { count: 1, last_hash: 'd'.repeat(64) },

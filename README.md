@@ -1,17 +1,29 @@
-# ForgeAI SDK — Foundation 0.1.3
+# ForgeAI SDK — Foundation 0.1.4
 
-Foundation 0.1.3 est le socle fail-closed qui transforme « l’agent dit DONE » en « le travail est prouvé ». Il est autonome, sans dépendance npm, cible Node.js 20+ et Git, et conserve les contrats machine v0.1.1.
+Foundation 0.1.4 est le socle fail-closed qui transforme « l’agent dit DONE » en « le travail est prouvé ». Il cible Node.js 20+, Git et un système capable d’ouvrir les fichiers avec une protection no-follow. Il ne contient aucune dépendance npm runtime ou développement.
 
-## Décisions intégrées
+## Invariants
 
 - Claude Code/Opus orchestre; Superpowers reste la méthode.
 - Un seul writer possède un changement cohérent.
-- Les rôles reviewer, auditor, security et verifier sont en lecture seule.
-- Les modèles externes appelés directement par MCP→LiteLLM restent CONSULT/AUDIT/REVIEW.
+- Reviewer, auditor, security et verifier restent en lecture seule.
+- Un modèle appelé directement par MCP→LiteLLM reste CONSULT/AUDIT/REVIEW.
 - EXECUTE exige un harness qualifié, une sandbox vérifiée et un worktree isolé.
-- Le résultat final est déterminé par PROOF et des gates exécutables, jamais par vote de modèles.
+- PROOF rend `PASS` ou `BLOCKED` à partir de Git, tests, reviews scellées, ledger et artefacts.
+- Une review n’est valide que si sa session est indépendante et son verdict lié au `final_commit`.
 
-## Vérification locale
+## Durcissement 0.1.4
+
+- glob matcher borné sans expression régulière dynamique;
+- commandes analysées en argv, `shell:false`, wrappers shell interdits;
+- timeout et overflow tuent l’arbre de processus;
+- lectures sensibles no-follow avec contrôles de stabilité TOCTOU;
+- inventaires/manifeste/artefacts/secret scan bornés et symlink-safe;
+- bundles, contrats, CLI et JSON bornés;
+- écritures critiques atomiques et synchronisées;
+- CodeQL produit du SARIF et toute alerte bloque la CI.
+
+## Vérification
 
 ```bash
 npm test
@@ -19,26 +31,20 @@ npm run lint
 npm run verify
 ```
 
-Le rapport frais est écrit dans `verification/verification-report.json`. `verification/VERIFIED` contient `PASS` uniquement si tous les gates de publication passent.
+Le rapport frais est écrit dans `verification/verification-report.json`. `verification/VERIFIED` contient `PASS` uniquement si tous les gates locaux passent sur un arbre Git propre.
 
-## Installation dans un dépôt
+## Installation
 
 ```bash
 node scripts/install-into-repo.mjs /chemin/du/depot
 node scripts/install-into-repo.mjs /chemin/du/depot --apply
 ```
 
-La première commande est un dry-run. L’installation applique les hooks et profils sous `.claude/`, puis vend le runtime sous `.forgeai/foundation/`. L’intégration réelle doit ensuite exécuter le smoke test décrit dans `docs/INTEGRATION_CLAUDE_CODE.md`.
+La première commande est un dry-run. L’installeur refuse les symlinks ou types ambigus, remplace le runtime par staging atomique et conserve une restauration en cas d’échec.
 
-## Interfaces principales
+## Limites explicites
 
-- `TaskEnvelope`: contrat immuable de tâche.
-- `EvidenceBundle`: preuves scellées et liées au commit.
-- `Ledger`: journal chaîné SHA-256 avec tête atomique.
-- `Policy engine`: permissions par rôle, chemin, commande et réseau.
-- `PROOF`: verdict déterministe `PASS` ou `BLOCKED`.
-- `Benchmark`: 15 slots fixes et métriques de succès vérifié.
-
-## Périmètre
-
-Ce paquet est prêt à intégrer. Il ne prétend pas être déjà installé dans ton dépôt ForgeAI réel, car aucun dépôt cible n’a été fourni à cette session. SonarQube et Neon sont préparés, mais ne sont pas activés sans leurs connexions et paramètres réels.
+- `doctor` bloque lorsque l’ouverture sécurisée no-follow n’est pas disponible.
+- SonarQube est optionnel tant que `FORGEAI_SONAR_REQUIRED` n’est pas activé.
+- CodeQL, tests et audit ne remplacent pas la review indépendante ni les smoke tests avec la version réelle de Claude Code.
+- `main` ne doit jamais être fusionné automatiquement par le système.

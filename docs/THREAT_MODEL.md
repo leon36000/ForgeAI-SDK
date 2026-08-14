@@ -1,31 +1,29 @@
 # Modèle de menace
 
-## Actifs protégés
+## Actifs
 
-Code source, historique Git, secrets, environnement, preuves, ledger, configuration Claude, budget modèles et intégrité du verdict.
+Code source, historique Git, secrets, environnement, preuves, ledger, hooks Claude, budget modèles et intégrité du verdict.
 
 ## Menaces traitées
 
 - sortie de scope par chemin absolu, `..`, symlink ou caractères de contrôle;
-- écriture d’un rôle read-only;
-- commande shell non déclarée ou destructive;
-- exfiltration réseau;
-- modification des hooks, agents ou preuves par le writer;
-- faux DONE, test omis, résultat falsifié;
-- bundle lié à un ancien commit;
-- suppression ou réordonnancement du ledger;
-- dilution d’un reviewer expert par consensus;
+- races TOCTOU et remplacement de fichiers/répertoires pendant lecture;
+- ReDoS par glob adversarial;
+- shell injection, wrappers shell et commandes destructrices variantes;
+- exfiltration réseau et protocoles non HTTP(S);
+- écriture par rôle read-only ou modification du control plane;
+- faux DONE, test omis, résultat falsifié ou review liée à un ancien commit;
+- bundle/JSON/sortie/inventaire sans borne;
+- suppression, réordonnancement ou symlink dans le ledger;
 - agent externe exécutant sans harness/sandbox;
 - perte de progression après compaction;
-- faux vert dû à un build compilé périmé.
+- build périmé ou manifeste incomplet.
 
 ## Menaces résiduelles
 
-- compromission de l’OS/hôte ou de Git lui-même;
-- modèle de confiance des dépendances du dépôt cible;
-- vulnérabilités du sandbox utilisé;
-- commande explicitement allowlistée mais intrinsèquement dangereuse;
-- falsification par un acteur humain ayant accès aux clés et au filesystem;
-- incompatibilité future des hooks Claude Code.
-
-Ces risques exigent défense hôte, revue humaine R3, signatures externes ou CI distante selon le contexte.
+- compromission de l’hôte, de Git, du runner ou du sandbox;
+- dépendances et scripts explicitement autorisés par le dépôt cible;
+- plateforme sans primitive no-follow sécurisée — elle est bloquée, non supportée;
+- acteur humain ayant accès au filesystem et aux clés;
+- incompatibilité future des hooks Claude Code;
+- vulnérabilités non détectées par tests, CodeQL, Sonar ou review.

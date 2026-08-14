@@ -84,3 +84,9 @@ test('secret scan finds provider keys', async () => {
 test('secret scan ignores binary files', async () => {
   const workspace=await tempWorkspace(); await writeFile(join(workspace,'src','image.png'),Buffer.from('-----BEGIN PRIVATE KEY-----')); const result=await scanSecrets(workspace); assert.equal(result.status,'PASS');
 });
+
+test('gate runner rejects shell syntax before spawn',async()=>{const w=await tempWorkspace();const command='node -e "process.exit(0)"; echo bypass';const t=sampleTask(w,{allowed_bash_commands:[command],required_test_commands:[command]});await assert.rejects(()=>runDeclaredGate(t,{id:'shell',category:'unit',command}),/shell syntax/u);});
+test('gate runner fails on output overflow',async()=>{const w=await tempWorkspace();const command=`${process.execPath} -e "process.stdout.write('x'.repeat(11*1024*1024))"`;const t=sampleTask(w,{allowed_bash_commands:[command],required_test_commands:[command]});const r=await runDeclaredGate(t,{id:'overflow',category:'unit',command},{timeoutMs:10000});assert.equal(r.status,'FAIL');assert.equal(r.output_overflow,true);});
+test('gate runner kills timed out process group',async()=>{const w=await tempWorkspace();const command=`${process.execPath} -e "setInterval(()=>{},1000)"`;const t=sampleTask(w,{allowed_bash_commands:[command],required_test_commands:[command]});const r=await runDeclaredGate(t,{id:'timeout',category:'unit',command},{timeoutMs:80});assert.equal(r.status,'FAIL');assert.equal(r.timed_out,true);});
+
+test('secret scan rejects a requested path absent from inventory',async()=>{const w=await tempWorkspace();await assert.rejects(()=>scanSecrets(w,{paths:['src/missing.js']}),/absent from stable inventory/u);});

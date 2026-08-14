@@ -13,3 +13,5 @@ TESTS_FAIL
 RELEASE_STATUS
 *.zip
 *.tar.gz
+
+codeql-results/

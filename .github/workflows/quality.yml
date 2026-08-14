@@ -8,10 +8,12 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
       - run: npm test
@@ -24,3 +26,29 @@ jobs:
           SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: npm run sonar
+  codeql:
+    name: CodeQL deterministic gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended,security-and-quality
+      - uses: github/codeql-action/analyze@v4
+        with:
+          upload: never
+          output: codeql-results
+      - name: Fail closed on any SARIF result
+        run: npm run codeql
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: codeql-sarif
+          retention-days: 14
+          if-no-files-found: error
+          path: codeql-results

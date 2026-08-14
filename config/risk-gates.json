@@ -17,14 +17,16 @@
     "fresh-review",
     "security-review",
     "security-gate",
-    "integration-gate"
+    "integration-gate",
+    "codeql-gate"
   ],
   "R3": [
     "fresh-review",
     "security-review",
     "security-gate",
     "integration-gate",
-    "human-approval"
+    "human-approval",
+    "codeql-gate"
   ],
   "task_overrides": {
     "bugfix": [

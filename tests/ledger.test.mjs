@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { appendLedgerEvent, initializeLedger, verifyLedger } from '../src/ledger.mjs';
 import { tempWorkspace } from './helpers.mjs';
@@ -51,3 +51,7 @@ test('serial concurrent appends result in one lock failure rather than corruptio
   assert.equal(results.filter((item) => item.status === 'fulfilled').length, 1);
   assert.equal((await verifyLedger(root)).count, 1);
 });
+
+test('rejects symlinked head',async()=>{const root=await ledger();const outside=join(await tempWorkspace(),'outside.json');await writeFile(outside,JSON.stringify({schema_version:'forgeai.ledger-head.v0.1.1',count:0,last_hash:'0'.repeat(64)}));await rm(join(root,'head.json'));await symlink(outside,join(root,'head.json'));await assert.rejects(()=>verifyLedger(root),/symbolic link/u);});
+test('rejects symlinked event',async()=>{const root=await ledger();await appendLedgerEvent(root,event());const path=join(root,'events','000000000001.json');const outside=join(await tempWorkspace(),'outside.json');await writeFile(outside,await readFile(path));await rm(path);await symlink(outside,path);await assert.rejects(()=>verifyLedger(root),/unexpected ledger event entry|symbolic link/u);});
+test('rejects unexpected event directory entries',async()=>{const root=await ledger();await writeFile(join(root,'events','junk.tmp'),'x');await assert.rejects(()=>verifyLedger(root),/unexpected ledger event entry/u);});

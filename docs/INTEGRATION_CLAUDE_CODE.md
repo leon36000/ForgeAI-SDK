@@ -37,3 +37,7 @@
 ## Limite de compatibilité
 
 Le fragment de hooks est fourni comme base versionnée. Le smoke test avec la version exacte de Claude Code installée dans le dépôt cible reste obligatoire avant activation, car les interfaces d’outils peuvent évoluer.
+
+## Foundation 0.1.4
+
+Avant activation, `doctor` doit confirmer `secure_no_follow=true`. Les smoke tests doivent être exécutés avec la version exacte du CLI Claude Code installée. Un changement de format d’événement ou d’outil est load-bearing et doit bloquer jusqu’à adaptation et régression.

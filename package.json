@@ -1,6 +1,6 @@
 {
   "name": "@forgeai/foundation",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Fail-closed quality foundation for Claude Code/Superpowers and qualified external workers.",
   "type": "module",
@@ -16,7 +16,8 @@
     "test": "node scripts/test.mjs",
     "verify": "node scripts/verify-release.mjs",
     "doctor": "node bin/forgeai-foundation.mjs doctor",
-    "sonar": "node scripts/sonar-gate.mjs"
+    "sonar": "node scripts/sonar-gate.mjs",
+    "codeql": "node scripts/check-sarif.mjs codeql-results"
   },
   "license": "UNLICENSED"
 }
