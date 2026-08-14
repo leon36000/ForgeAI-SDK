@@ -1,0 +1,130 @@
+name: forgeai-independent-analysis
+
+on:
+  push:
+    branches:
+      - forgeai/independent-analysis-0.1.3
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: 7f635721a0958cd92ad970c0010b363a09200c86
+  BASE_SHA: 5f94609e98f4882cc891e3c05b3ab83f16300cc4
+
+jobs:
+  fallow:
+    name: Fallow independent review
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact release HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify exact source and native gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+          npm test
+          npm run verify
+      - name: Run Fallow audit
+        id: fallow-audit
+        shell: bash
+        run: |
+          set +e
+          npx -y fallow@3.10.0 audit --base "$BASE_SHA" --format json --quiet --explain 2>fallow-audit.stderr >fallow-audit.json
+          status=$?
+          set -e
+          cat fallow-audit.stderr >&2
+          cat fallow-audit.json
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Generate Fallow review guide
+        id: fallow-review
+        shell: bash
+        run: |
+          set +e
+          npx -y fallow@3.10.0 review --base "$BASE_SHA" --walkthrough-guide --format json --quiet 2>fallow-review.stderr >fallow-review.json
+          status=$?
+          set -e
+          cat fallow-review.stderr >&2
+          cat fallow-review.json
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Surface Fallow security candidates
+        id: fallow-security
+        shell: bash
+        run: |
+          set +e
+          npx -y fallow@3.10.0 security --changed-since "$BASE_SHA" --surface --format json --quiet 2>fallow-security.stderr >fallow-security.json
+          status=$?
+          set -e
+          cat fallow-security.stderr >&2
+          cat fallow-security.json
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Write analysis metadata
+        shell: bash
+        run: |
+          node -e 'const fs=require("fs"); fs.writeFileSync("analysis-metadata.json", JSON.stringify({release_sha:process.env.RELEASE_SHA,base_sha:process.env.BASE_SHA,fallow_version:"3.10.0",audit_exit:Number(process.env.AUDIT),review_exit:Number(process.env.REVIEW),security_exit:Number(process.env.SECURITY)},null,2)+"\n")'
+        env:
+          AUDIT: ${{ steps.fallow-audit.outputs.status }}
+          REVIEW: ${{ steps.fallow-review.outputs.status }}
+          SECURITY: ${{ steps.fallow-security.outputs.status }}
+      - name: Upload Fallow evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: fallow-independent-analysis
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            analysis-metadata.json
+            fallow-audit.json
+            fallow-audit.stderr
+            fallow-review.json
+            fallow-review.stderr
+            fallow-security.json
+            fallow-security.stderr
+
+  codeql:
+    name: CodeQL independent security analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact release HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended,security-and-quality
+      - name: Analyze without uploading alerts
+        uses: github/codeql-action/analyze@v4
+        with:
+          upload: never
+          output: codeql-results
+      - name: Upload CodeQL evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: codeql-independent-analysis
+          retention-days: 7
+          if-no-files-found: error
+          path: codeql-results
