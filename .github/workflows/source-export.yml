@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
+  RELEASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  RELEASE_TREE: dbfe76b324c955089eb87e125bd4bdb5e1dbaa9a
 
 jobs:
   export:
@@ -25,11 +26,12 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
           tar --exclude=.git -czf "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" .
           sha256sum "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" > "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz.sha256"
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-source-f071cae6
+          name: forgeai-source-6ac83d07
           retention-days: 1
           if-no-files-found: error
           path: |
