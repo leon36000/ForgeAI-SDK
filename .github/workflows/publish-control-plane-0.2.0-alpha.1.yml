@@ -1,0 +1,79 @@
+name: publish-control-plane-0.2.0-alpha.1
+
+on:
+  push:
+    branches:
+      - forgeai/control-plane-publish-0.2.0-alpha.1
+
+permissions:
+  contents: write
+
+env:
+  PARENT_SHA: 25105445c1302ca002ac2532ec4ba10b16733126
+  EXPECTED_PARENT_TREE: 925cb1097668874865a68c536c656da3ad504f07
+  EXPECTED_TREE: 205910a0e3828d68b758e8378272fde150aa5698
+  PATCH_SHA256: 03195f34c173bee34d23e4fd5d1aa1d50d341320e842212ff0ab56dba4ae5fdc
+  TARGET_BRANCH: forgeai/control-plane-0.2.0-alpha.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact Foundation parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PARENT_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify transport and parent authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$GITHUB_WORKSPACE/transport/.forgeai-release/control-plane-0.2.0-alpha.1.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$patch" | sha256sum --check --strict
+          gzip --test "$patch"
+          test "$(git -C release rev-parse HEAD)" = "$PARENT_SHA"
+          test "$(git -C release rev-parse HEAD^{tree})" = "$EXPECTED_PARENT_TREE"
+          if git -C release ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Target branch already exists: $TARGET_BRANCH" >&2
+            exit 1
+          fi
+      - name: Apply exact control-plane patch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$GITHUB_WORKSPACE/transport/.forgeai-release/control-plane-0.2.0-alpha.1.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit and re-run all release gates
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'feat: add Claude Agent control-plane alpha'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push stacked control-plane branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'CONTROL_PLANE_COMMIT=%s\nCONTROL_PLANE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
