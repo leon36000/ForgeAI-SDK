@@ -113,3 +113,5 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: fallow-evidence
+
+# Second push intentionally triggers this exact-HEAD audit workflow.
