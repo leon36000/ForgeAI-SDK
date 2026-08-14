@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runDeclaredGate, runRequiredGates } from '../src/gate-runner.mjs';
 import { scanSecrets } from '../src/secret-scan.mjs';
 import { sampleTask, tempWorkspace } from './helpers.mjs';
@@ -17,6 +20,26 @@ test('gate runner rejects undeclared command', async () => {
 });
 test('required gates stop after first failure by default', async () => {
   const workspace=await tempWorkspace(); const fail=`${process.execPath} -e "process.exit(1)"`; const pass=`${process.execPath} -e "process.exit(0)"`; const task=sampleTask(workspace,{allowed_bash_commands:[fail,pass],required_test_commands:[fail,pass]}); const results=await runRequiredGates(task); assert.equal(results.length,1); assert.equal(results[0].status,'FAIL');
+});
+
+test('manifest verification rejects unlisted source files', async () => {
+  const workspace=await tempWorkspace('manifest-');
+  const listed=Buffer.from('listed\n','utf8');
+  await writeFile(join(workspace,'listed.txt'),listed);
+  await writeFile(join(workspace,'unlisted.txt'),'unlisted\n');
+  await writeFile(join(workspace,'SOURCE_MANIFEST.json'),JSON.stringify({
+    schema_version:'forgeai.source-manifest.v0.1.1',
+    generated_at:'2026-08-13T00:00:00.000Z',
+    files:[{
+      path:'listed.txt',
+      bytes:listed.length,
+      sha256:createHash('sha256').update(listed).digest('hex'),
+    }],
+  }));
+  const checker=fileURLToPath(new URL('../scripts/check-manifest.mjs',import.meta.url));
+  const result=spawnSync(process.execPath,[checker],{cwd:workspace,encoding:'utf8'});
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/unlisted file: unlisted\.txt/u);
 });
 
 test('secret scan passes clean files', async () => {
