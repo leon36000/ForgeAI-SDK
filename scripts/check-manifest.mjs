@@ -24,10 +24,16 @@ const findings = [];
 const manifestPaths = manifest.files.map((file) => file.path);
 const manifestPathSet = new Set(manifestPaths);
 if (manifestPathSet.size !== manifestPaths.length) findings.push('manifest contains duplicate paths');
-for (const path of (await collect()).sort()) {
+const actualPaths = (await collect()).sort();
+const actualPathSet = new Set(actualPaths);
+for (const path of actualPaths) {
   if (!manifestPathSet.has(path)) findings.push(`unlisted file: ${path}`);
 }
 for (const file of manifest.files) {
+  if (typeof file?.path !== 'string' || !actualPathSet.has(file.path)) {
+    findings.push(`${String(file?.path)}: outside source inventory`);
+    continue;
+  }
   try {
     const info = await lstat(file.path);
     if (!info.isFile()) {
