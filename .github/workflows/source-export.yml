@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 7f635721a0958cd92ad970c0010b363a09200c86
+  RELEASE_SHA: 25105445c1302ca002ac2532ec4ba10b16733126
 
 jobs:
   export:
@@ -29,7 +29,7 @@ jobs:
           sha256sum "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" > "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz.sha256"
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-source-7f635721
+          name: forgeai-source-25105445
           retention-days: 1
           if-no-files-found: error
           path: |
