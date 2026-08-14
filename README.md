@@ -42,6 +42,8 @@ Dans cet alpha, `settingSources` est explicitement vide. Foundation applique sa 
 
 Le SDK est aussi configuré avec une sandbox explicite et fail-closed: activation obligatoire, `failIfUnavailable: true`, aucun escape non sandboxé, réseau refusé (`deniedDomains: ["*"]`, allowlist stricte), sockets et binding local refusés. Cette configuration renforce le contrat, mais ne remplace pas la qualification live de la sandbox réellement déployée.
 
+Chaque appel writer/reviewer est lié à `TaskEnvelope.expires_at`. Une session bloquée est annulée par `AbortController`; l’itérateur est fermé en best effort et le run revient `BLOCKED` avec le hash de tâche calculé avant expiration.
+
 La qualification refuse aussi les commandes directement capables d’ouvrir le réseau (`curl`, `wget`, `npx`, `git fetch/push/clone`, installation ou publication de paquets, ou argument HTTP(S)). L’environnement transmis au SDK est allowlisté: paramètres runtime, proxy/certificat et variables d’authentification des fournisseurs pris en charge seulement. Les variables applicatives arbitraires ne sont pas copiées.
 
 ## Vérification

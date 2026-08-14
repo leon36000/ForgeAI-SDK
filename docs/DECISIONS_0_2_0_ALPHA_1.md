@@ -19,6 +19,7 @@ Ces décisions s’appliquent à la tranche Claude Agent SDK empilée sur Founda
 11. **OpenHands et LiteLLM EXECUTE restent séparés.** Leur qualification vient après la stabilisation et le benchmark du control plane Claude.
 12. **`tools` est l’autorité de capacité SDK.** `allowedTools` n’est pas traité comme une barrière de disponibilité; il auto-approuve uniquement le même sous-ensemble déjà borné par `tools`.
 13. **La sandbox SDK est explicitement fail-closed.** Elle est activée avec échec dur si indisponible, sans commandes non sandboxées, sans réseau, socket ou binding local. Cette configuration ne remplace pas la preuve live exigée par `sandbox_verified`.
+14. **La deadline TaskEnvelope est une autorité d’exécution.** Writer et reviewer reçoivent la même échéance absolue; un dépassement annule le SDK et bloque le run. Le hash de tâche est figé avant l’exécution pour rester disponible après expiration.
 
 ## Limites assumées
 

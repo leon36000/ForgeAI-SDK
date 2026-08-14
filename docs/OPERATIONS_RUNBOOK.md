@@ -44,7 +44,7 @@
 - sandbox SDK indisponible, escape non sandboxé ou réseau/socket autorisé: BLOCKED;
 - capability no-follow absente: BLOCKED;
 - hook, ledger, manifeste ou SARIF invalide: BLOCKED;
-- timeout/overflow: tuer l’arbre de processus, conserver les logs, BLOCKED;
+- deadline TaskEnvelope atteinte, timeout ou overflow: déclencher `AbortController`, fermer le flux en best effort, conserver les logs, BLOCKED;
 - résultat SDK ou JSON structuré invalide: BLOCKED;
 - session reviewer identique au writer: BLOCKED;
 - test flaky: reproduire et corriger la synchronisation;

@@ -182,6 +182,63 @@ test('structured agent invocation returns one bounded terminal result', async ()
   assert.deepEqual(result.message_types, ['system:init', 'result:success']);
 });
 
+test('structured invocation enforces a wall-clock deadline and aborts the SDK query', async () => {
+  const controller = new AbortController();
+  let returned = false;
+  let receivedController = null;
+  const query = ({ options }) => {
+    receivedController = options.abortController;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => new Promise(() => {}),
+          return: async () => { returned = true; return { done: true }; },
+        };
+      },
+    };
+  };
+  const startedAt = Date.now();
+  await assert.rejects(
+    () => invokeStructuredAgent({
+      query,
+      prompt: 'writer prompt',
+      options: { maxTurns: 24, maxBudgetUsd: 4, abortController: controller },
+      deadlineAt: new Date(Date.now() + 50).toISOString(),
+      validate: (value) => value,
+    }),
+    /deadline/u,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(receivedController, controller);
+  assert.equal(controller.signal.aborted, true);
+  assert.equal(returned, true);
+  assert.ok(Date.now() - startedAt < 2_000);
+});
+
+test('structured invocation rejects an invalid or expired deadline before starting the SDK', async () => {
+  let calls = 0;
+  const query = () => { calls += 1; return { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true }) }) }; };
+  await assert.rejects(() => invokeStructuredAgent({ query, prompt: 'x', options: { maxTurns: 1, maxBudgetUsd: 1 }, deadlineAt: 'not-a-date', validate: (value) => value }), /deadline/u);
+  await assert.rejects(() => invokeStructuredAgent({ query, prompt: 'x', options: { maxTurns: 1, maxBudgetUsd: 1 }, deadlineAt: new Date(Date.now() - 1_000).toISOString(), validate: (value) => value }), /deadline/u);
+  assert.equal(calls, 0);
+});
+
+test('structured invocation rejects an invalid iterator without leaving the deadline armed', async () => {
+  const controller = new AbortController();
+  const query = () => ({ [Symbol.asyncIterator]: () => ({}) });
+  await assert.rejects(
+    () => invokeStructuredAgent({
+      query,
+      prompt: 'x',
+      options: { maxTurns: 1, maxBudgetUsd: 1, abortController: controller },
+      deadlineAt: new Date(Date.now() + 5_000).toISOString(),
+      validate: (value) => value,
+    }),
+    /iterator.*next/u,
+  );
+  assert.equal(controller.signal.aborted, true);
+});
+
 test('structured invocation rejects missing, duplicate, or error terminal results', async () => {
   async function* missing() { yield { type: 'assistant' }; }
   await assert.rejects(() => invokeStructuredAgent({ query: missing, prompt: 'x', options: { maxTurns: 1, maxBudgetUsd: 1 }, validate: (value) => value }), /terminal result/u);

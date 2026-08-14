@@ -209,39 +209,117 @@ function messageType(message) {
   return subtype ? `${type}:${subtype}` : type;
 }
 
-export async function invokeStructuredAgent({ query, prompt, options, validate }) {
+function parseDeadline(deadlineAt) {
+  if (deadlineAt === undefined || deadlineAt === null) return null;
+  if (typeof deadlineAt !== 'string') throw new Error('agent deadline must be an ISO timestamp');
+  const deadlineMs = Date.parse(deadlineAt);
+  if (!Number.isFinite(deadlineMs)) throw new Error('agent deadline must be an ISO timestamp');
+  if (deadlineMs <= Date.now()) throw new Error(`agent deadline already expired: ${deadlineAt}`);
+  return deadlineMs;
+}
+
+function ensureAbortController(options) {
+  if (options.abortController === undefined) return new AbortController();
+  if (!(options.abortController instanceof AbortController)) throw new TypeError('agent abortController must be an AbortController');
+  if (options.abortController.signal.aborted) throw new Error('agent abortController is already aborted');
+  return options.abortController;
+}
+
+function createDeadlineGuard(deadlineMs, deadlineAt, abortController) {
+  if (deadlineMs === null) return { race: (promise) => promise, clear: () => {} };
+  const maxTimerMs = 2_147_000_000;
+  let timer;
+  let cleared = false;
+  const deadlineError = new Error(`Claude Agent SDK deadline exceeded: ${deadlineAt}`);
+  let rejectDeadline;
+  const deadlinePromise = new Promise((_, reject) => { rejectDeadline = reject; });
+  const schedule = () => {
+    if (cleared) return;
+    const remaining = deadlineMs - Date.now();
+    if (remaining <= 0) {
+      if (!abortController.signal.aborted) abortController.abort(deadlineError);
+      rejectDeadline(deadlineError);
+      return;
+    }
+    timer = setTimeout(schedule, Math.min(remaining, maxTimerMs));
+  };
+  schedule();
+  return {
+    race: (promise) => Promise.race([promise, deadlinePromise]),
+    clear: () => { cleared = true; clearTimeout(timer); },
+  };
+}
+
+function closeIterator(iterator) {
+  if (typeof iterator?.return !== 'function') return;
+  try {
+    Promise.resolve(iterator.return()).catch(() => {});
+  } catch {
+    // Best effort only: the AbortController is the authoritative cancellation path.
+  }
+}
+
+function validateInvocationParameters({ query, prompt, options, validate, deadlineAt }) {
   if (typeof query !== 'function') throw new TypeError('SDK query must be a function');
   if (typeof prompt !== 'string' || prompt.length === 0 || Buffer.byteLength(prompt, 'utf8') > MAX_PROMPT_BYTES) throw new Error('agent prompt must be a non-empty bounded string');
   if (!isPlainObject(options)) throw new TypeError('agent options must be a plain object');
   if (!Number.isInteger(options.maxTurns) || options.maxTurns < 1) throw new Error('agent maxTurns must be a positive integer');
   if (!Number.isFinite(options.maxBudgetUsd) || options.maxBudgetUsd <= 0) throw new Error('agent maxBudgetUsd must be greater than zero');
   if (typeof validate !== 'function') throw new TypeError('structured-output validator must be a function');
+  const deadlineMs = parseDeadline(deadlineAt);
+  const abortController = ensureAbortController(options);
+  const queryOptions = options.abortController === abortController ? options : { ...options, abortController };
+  return { deadlineMs, abortController, queryOptions };
+}
 
+function startSdkIterator(query, prompt, queryOptions, abortController) {
   let iterable;
   try {
-    iterable = query({ prompt, options });
+    iterable = query({ prompt, options: queryOptions });
   } catch (error) {
     throw new Error(`Claude Agent SDK query failed to start: ${error.message}`, { cause: error });
   }
   if (!iterable || typeof iterable[Symbol.asyncIterator] !== 'function') throw new Error('Claude Agent SDK query did not return an async iterable');
+  let iterator;
+  try {
+    iterator = iterable[Symbol.asyncIterator]();
+  } catch (error) {
+    if (!abortController.signal.aborted) abortController.abort(error);
+    throw new Error(`Claude Agent SDK iterator failed to start: ${error.message}`, { cause: error });
+  }
+  if (!iterator || typeof iterator.next !== 'function') {
+    if (!abortController.signal.aborted) abortController.abort(new Error('invalid SDK iterator'));
+    throw new Error('Claude Agent SDK async iterator does not implement next()');
+  }
+  return iterator;
+}
 
+async function collectSdkMessages(iterator, deadlineGuard, abortController) {
   const messageTypes = [];
   let terminal = null;
   let count = 0;
   try {
-    for await (const message of iterable) {
+    while (true) {
+      const next = await deadlineGuard.race(Promise.resolve().then(() => iterator.next()));
+      if (!isPlainObject(next) || typeof next.done !== 'boolean') throw new Error('Claude Agent SDK iterator returned an invalid result');
+      if (next.done) break;
+      const message = next.value;
       count += 1;
       if (count > MAX_MESSAGES) throw new Error(`Claude Agent SDK emitted more than ${MAX_MESSAGES} messages`);
       messageTypes.push(messageType(message));
-      if (message?.type === 'result') {
-        if (terminal) throw new Error('Claude Agent SDK emitted multiple terminal results');
-        terminal = message;
-      }
+      if (message?.type !== 'result') continue;
+      if (terminal) throw new Error('Claude Agent SDK emitted multiple terminal results');
+      terminal = message;
     }
   } catch (error) {
+    if (!abortController.signal.aborted) abortController.abort(error);
+    closeIterator(iterator);
     throw new Error(`Claude Agent SDK query failed: ${error.message}`, { cause: error });
   }
+  return { terminal, messageTypes };
+}
 
+function validateTerminalResult(terminal, options, validate) {
   if (!terminal) throw new Error('Claude Agent SDK terminal result is missing');
   if (terminal.subtype !== 'success' || terminal.is_error === true) throw new Error(`Claude Agent SDK terminal subtype is ${terminal.subtype ?? 'unknown'}`);
   if (typeof terminal.session_id !== 'string' || terminal.session_id.length === 0) throw new Error('Claude Agent SDK terminal result is missing session_id');
@@ -249,14 +327,25 @@ export async function invokeStructuredAgent({ query, prompt, options, validate }
   if (terminal.total_cost_usd > options.maxBudgetUsd) throw new Error(`Claude Agent SDK budget exceeded: ${terminal.total_cost_usd} > ${options.maxBudgetUsd}`);
   if (!Number.isInteger(terminal.num_turns) || terminal.num_turns < 0) throw new Error('Claude Agent SDK terminal result has invalid num_turns');
   if (terminal.num_turns > options.maxTurns) throw new Error(`Claude Agent SDK turn limit exceeded: ${terminal.num_turns} > ${options.maxTurns}`);
-
-  let structuredOutput;
   try {
-    structuredOutput = validate(terminal.structured_output);
+    return validate(terminal.structured_output);
   } catch (error) {
     throw new Error(`Claude Agent SDK structured output is invalid: ${error.message}`, { cause: error });
   }
+}
 
+export async function invokeStructuredAgent({ query, prompt, options, validate, deadlineAt = undefined }) {
+  const { deadlineMs, abortController, queryOptions } = validateInvocationParameters({ query, prompt, options, validate, deadlineAt });
+  const deadlineGuard = createDeadlineGuard(deadlineMs, deadlineAt, abortController);
+  let terminal;
+  let messageTypes;
+  try {
+    const iterator = startSdkIterator(query, prompt, queryOptions, abortController);
+    ({ terminal, messageTypes } = await collectSdkMessages(iterator, deadlineGuard, abortController));
+  } finally {
+    deadlineGuard.clear();
+  }
+  const structuredOutput = validateTerminalResult(terminal, options, validate);
   return Object.freeze({
     session_id: terminal.session_id,
     subtype: terminal.subtype,

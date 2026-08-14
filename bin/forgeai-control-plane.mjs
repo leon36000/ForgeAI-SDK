@@ -5,7 +5,7 @@ import { validateTaskEnvelope } from '../src/contracts.mjs';
 import { atomicWriteJson, readJson } from '../src/utils.mjs';
 import { validateControlPlanePolicy } from '../src/control-plane/contracts.mjs';
 import { loadClaudeAgentSdk } from '../src/control-plane/sdk-adapter.mjs';
-import { runControlPlane } from '../src/control-plane/runner.mjs';
+import { isControlPlaneResult, runControlPlane } from '../src/control-plane/runner.mjs';
 import { SUPPORTED_CLAUDE_AGENT_SDK } from '../src/control-plane/constants.mjs';
 
 const DEFAULT_POLICY = resolve('config', 'control-plane-policy.json');
@@ -62,6 +62,7 @@ async function run(taskPath, policyPath, outputPath) {
   validateTaskEnvelope(task);
   validateControlPlanePolicy(policy);
   const result = await runControlPlane({ task, policy });
+  if (!isControlPlaneResult(result)) throw new Error('control-plane runner returned an invalid result');
   if (outputPath) await writeJson(outputPath, result);
   print(result);
   if (result.verdict !== 'PASS') process.exitCode = 2;

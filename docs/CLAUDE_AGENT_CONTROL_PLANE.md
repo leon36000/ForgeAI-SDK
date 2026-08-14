@@ -76,6 +76,8 @@ Ces options sont une défense en profondeur. `execution.sandbox_verified=true` r
 - verdict lié au `final_commit` et hashé dans EvidenceBundle;
 - réutilisation de la session writer: `BLOCKED`.
 
+Chaque invocation est bornée par la deadline absolue de TaskEnvelope. Le runner transmet un `AbortController` au SDK, annule le flux à échéance et tente de fermer son itérateur. Le hash TaskEnvelope est calculé une seule fois au démarrage afin qu’un verdict `BLOCKED` reste émis même après expiration.
+
 Le runner compare la session reviewer à la session writer réellement retournée par le SDK et au `writer_session_id` logique de TaskEnvelope. L’identité SDK réelle est conservée dans le ledger et le résultat control-plane. Dans cette version de Foundation, EvidenceBundle ne porte que la review; un appel autonome à PROOF ne reconstruit donc pas à lui seul la session writer SDK réelle. Le control plane est l’autorité de cette vérification de fraîcheur pour l’alpha.
 
 ## Pourquoi `settingSources: []`
@@ -121,6 +123,7 @@ Le résultat devient `BLOCKED` notamment si :
 - résultat terminal manquant, dupliqué ou en erreur;
 - structured output malformé;
 - budget ou tours dépassés;
+- deadline `TaskEnvelope.expires_at` atteinte ou déjà dépassée;
 - commit reporté différent de HEAD;
 - scope Git invalide;
 - gate absent ou rouge;

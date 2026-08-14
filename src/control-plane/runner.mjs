@@ -106,6 +106,7 @@ export async function runControlPlane({
   now = () => new Date().toISOString(),
 } = {}) {
   let task;
+  let taskHash = null;
   let policy;
   let paths = null;
   let phase = 'contract';
@@ -136,7 +137,7 @@ export async function runControlPlane({
       verdict: 'BLOCKED',
       phase,
       task_id: task?.task_id ?? null,
-      task_envelope_hash: task ? taskEnvelopeHash(task) : null,
+      task_envelope_hash: taskHash,
       sdk: policy?.sdk ?? null,
       writer: publicInvocation(writer, policy?.writer?.model),
       reviewer: publicInvocation(reviewer, policy?.reviewer?.model),
@@ -154,6 +155,7 @@ export async function runControlPlane({
   try {
     validateTaskEnvelope(taskValue);
     task = normalizedTaskEnvelope(taskValue);
+    taskHash = taskEnvelopeHash(task);
     policy = normalizeControlPlanePolicy(policyValue);
     paths = createPaths(task);
     await mkdir(paths.runtime, { recursive: true, mode: 0o700 });
@@ -168,7 +170,7 @@ export async function runControlPlane({
       actor: 'forgeai-control-plane',
       task_id: task.task_id,
       payload: {
-        task_envelope_hash: taskEnvelopeHash(task),
+        task_envelope_hash: taskHash,
         sdk: policy.sdk,
         writer_model: policy.writer.model,
         reviewer_model: policy.reviewer.model,
@@ -233,6 +235,7 @@ export async function runControlPlane({
       query: sdkQuery,
       prompt: buildWriterPrompt(task),
       options,
+      deadlineAt: task.expires_at,
       validate: (value) => validateWriterResult(value, task),
     });
     await decisionQueue;
@@ -303,7 +306,7 @@ export async function runControlPlane({
   await atomicWriteJson(paths.reviewer_task, reviewerTask);
   const reviewPacket = Object.freeze({
     task_id: task.task_id,
-    task_envelope_hash: taskEnvelopeHash(task),
+    task_envelope_hash: taskHash,
     final_commit: gitState.final_commit,
     changed_files: gitState.changed_files,
     gates: gates.map((gate) => ({ id: gate.id, category: gate.category, command: gate.command, status: gate.status, exit_code: gate.exit_code, stdout_sha256: gate.stdout_sha256, stderr_sha256: gate.stderr_sha256 })),
@@ -320,6 +323,7 @@ export async function runControlPlane({
       query: sdkQuery,
       prompt: buildReviewerPrompt(task, reviewPacket),
       options,
+      deadlineAt: task.expires_at,
       validate: (value) => validateReviewerResult(value, task, gitState.final_commit),
     });
     await decisionQueue;
@@ -372,7 +376,7 @@ export async function runControlPlane({
     const artifacts = await buildArtifactManifest(paths.artifacts);
     const evidenceDraft = {
       task_id: task.task_id,
-      task_envelope_hash: taskEnvelopeHash(task),
+      task_envelope_hash: taskHash,
       base_commit: task.base_commit,
       final_commit: gitState.final_commit,
       generated_at: instant(now),
@@ -414,7 +418,7 @@ export async function runControlPlane({
     verdict: proof.verdict,
     phase: 'proof',
     task_id: task.task_id,
-    task_envelope_hash: taskEnvelopeHash(task),
+    task_envelope_hash: taskHash,
     sdk: policy.sdk,
     writer: publicInvocation(writer, policy.writer.model),
     reviewer: publicInvocation(reviewer, policy.reviewer.model),

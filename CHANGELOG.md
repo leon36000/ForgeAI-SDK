@@ -12,6 +12,8 @@
 - Filtre l’environnement du subprocessus SDK afin de ne transmettre que runtime, proxy/certificats et authentification fournisseur nécessaires.
 - Borne la capacité réelle avec `tools`, aligne `allowedTools` sur le même ensemble et désactive explicitement MCP.
 - Force la sandbox SDK en fail-closed, sans escape non sandboxé, réseau, socket ni binding local.
+- Lie chaque invocation SDK à `TaskEnvelope.expires_at`, annule par `AbortController` et retourne `BLOCKED` si une session se fige ou dépasse sa deadline.
+- Conserve le hash TaskEnvelope calculé au démarrage afin qu’un blocage causé par l’expiration reste sérialisable et vérifiable.
 - Ajoute une CLI `doctor`/`run` et des tests fake-SDK sur de vrais dépôts Git temporaires.
 
 ## 0.1.4 — 2026-08-14

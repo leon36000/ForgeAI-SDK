@@ -95,7 +95,7 @@ git commit -m "feat: add control-plane alpha contracts"
 
 - [x] **Step 1: Write failing adapter tests**
 
-Cover writer/reviewer `tools` and `allowedTools` profiles, fail-closed sandbox options, MCP disabled, `permissionMode: "dontAsk"`, `settingSources: []`, `maxTurns`, `maxBudgetUsd`, structured output, allowlisted environment, Foundation `canUseTool` decisions, missing SDK, missing terminal result, SDK error subtype, malformed structured output, repeated terminal results, budget overflow, turn overflow, and session-ID absence.
+Cover writer/reviewer `tools` and `allowedTools` profiles, fail-closed sandbox options, MCP disabled, `permissionMode: "dontAsk"`, `settingSources: []`, `maxTurns`, `maxBudgetUsd`, absolute TaskEnvelope deadline, `AbortController`, structured output, allowlisted environment, Foundation `canUseTool` decisions, missing SDK, hung or invalid iterator, missing terminal result, SDK error subtype, malformed structured output, repeated terminal results, budget overflow, turn overflow, and session-ID absence.
 
 - [x] **Step 2: Run focused tests and confirm failure**
 
@@ -141,7 +141,7 @@ Use real temporary Git repositories. The fake writer edits and commits a scoped 
 
 - [x] **Step 2: Add fail-closed scenario tests**
 
-Cover gate failure preventing review, writer final-commit mismatch, out-of-scope Git change, writer BLOCKED result, reviewer BLOCKED result, reused writer/reviewer session ID, malformed SDK result, missing SDK, and budget overflow. Every scenario must return a structured `BLOCKED` result and must never write a PASS proof.
+Cover gate failure preventing review, writer final-commit mismatch, out-of-scope Git change, writer BLOCKED result, reviewer BLOCKED result, reused writer/reviewer session ID, task expiration during a hung writer, malformed SDK result, missing SDK, and budget overflow. Every scenario must return a structured `BLOCKED` result and must never write a PASS proof.
 
 - [x] **Step 3: Run focused tests and confirm failure**
 

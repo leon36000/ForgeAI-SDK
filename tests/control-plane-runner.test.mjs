@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runControlPlane } from '../src/control-plane/runner.mjs';
+import { taskEnvelopeHash } from '../src/contracts.mjs';
 import {
   CONTROL_PLANE_POLICY_SCHEMA_VERSION,
   REVIEWER_RESULT_SCHEMA_VERSION,
@@ -197,6 +198,38 @@ test('bugfix maps its first required gate to regression for PROOF', async () => 
   const result = await runControlPlane({ task: bugfix, policy: policy(), query: fake.query, sdkVersion: '0.3.232' });
   assert.equal(result.verdict, 'PASS');
   assert.equal(result.gates[0].category, 'regression');
+});
+
+test('task expiry aborts a hung writer query and returns BLOCKED', { timeout: 3_000 }, async () => {
+  const { task } = await fixture();
+  const now = Date.now();
+  const expiringTask = {
+    ...structuredClone(task),
+    created_at: new Date(now - 1_000).toISOString(),
+    expires_at: new Date(now + 300).toISOString(),
+  };
+  const expectedTaskHash = taskEnvelopeHash(expiringTask);
+  let controller = null;
+  let returned = false;
+  const query = ({ options }) => {
+    controller = options.abortController;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => new Promise(() => {}),
+          return: async () => { returned = true; return { done: true }; },
+        };
+      },
+    };
+  };
+  const result = await runControlPlane({ task: expiringTask, policy: policy(), query, sdkVersion: '0.3.232' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(result.verdict, 'BLOCKED');
+  assert.equal(result.phase, 'writer');
+  assert.equal(result.task_envelope_hash, expectedTaskHash);
+  assert.ok(result.findings.some((finding) => finding.code === 'WRITER_SDK_ERROR' && /deadline/u.test(finding.message)));
+  assert.equal(controller?.signal.aborted, true);
+  assert.equal(returned, true);
 });
 
 test('missing SDK fails closed before writer invocation', async () => {
