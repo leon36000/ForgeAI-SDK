@@ -39,3 +39,5 @@ jobs:
           path: |
             ${{ runner.temp }}/forgeai-source-${{ env.RELEASE_SHA }}.tar.gz
             ${{ runner.temp }}/forgeai-source-${{ env.RELEASE_SHA }}.tar.gz.sha256
+
+# Second push intentionally triggers this exact-HEAD export workflow.
