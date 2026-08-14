@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgeai.local/schemas/control-plane-policy-v0.2.0-alpha.1.schema.json",
+  "title": "ForgeAI Control Plane Policy v0.2.0-alpha.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sdk", "writer", "reviewer", "max_total_budget_usd"],
+  "properties": {
+    "schema_version": { "const": "forgeai.control-plane-policy.v0.2.0-alpha.1" },
+    "sdk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "version"],
+      "properties": {
+        "package": { "const": "@anthropic-ai/claude-agent-sdk" },
+        "version": { "const": "0.3.232" }
+      }
+    },
+    "writer": { "$ref": "#/$defs/role" },
+    "reviewer": { "$ref": "#/$defs/role" },
+    "max_total_budget_usd": { "type": "number", "exclusiveMinimum": 0, "maximum": 200 }
+  },
+  "$defs": {
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "max_turns", "max_budget_usd"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "max_turns": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "max_budget_usd": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+      }
+    }
+  }
+}

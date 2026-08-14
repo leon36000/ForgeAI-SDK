@@ -1,0 +1,18 @@
+{
+  "schema_version": "forgeai.control-plane-policy.v0.2.0-alpha.1",
+  "sdk": {
+    "package": "@anthropic-ai/claude-agent-sdk",
+    "version": "0.3.232"
+  },
+  "writer": {
+    "model": "claude-sonnet-5",
+    "max_turns": 48,
+    "max_budget_usd": 8
+  },
+  "reviewer": {
+    "model": "claude-sonnet-5",
+    "max_turns": 24,
+    "max_budget_usd": 3
+  },
+  "max_total_budget_usd": 11
+}

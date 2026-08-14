@@ -1,14 +1,15 @@
 {
   "name": "@forgeai/foundation",
-  "version": "0.1.4",
+  "version": "0.2.0-alpha.1",
   "private": true,
-  "description": "Fail-closed quality foundation for Claude Code/Superpowers and qualified external workers.",
+  "description": "Fail-closed quality foundation and Claude Agent SDK control plane for verified software delivery.",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "bin": {
-    "forgeai-foundation": "./bin/forgeai-foundation.mjs"
+    "forgeai-foundation": "./bin/forgeai-foundation.mjs",
+    "forgeai-control-plane": "./bin/forgeai-control-plane.mjs"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -16,6 +17,7 @@
     "test": "node scripts/test.mjs",
     "verify": "node scripts/verify-release.mjs",
     "doctor": "node bin/forgeai-foundation.mjs doctor",
+    "control-plane": "node bin/forgeai-control-plane.mjs",
     "sonar": "node scripts/sonar-gate.mjs",
     "codeql": "node scripts/check-sarif.mjs codeql-results"
   },

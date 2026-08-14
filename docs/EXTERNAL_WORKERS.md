@@ -21,3 +21,7 @@ Claude Code fournit TaskEnvelope, commit de base, worktree, limites, acceptance 
 ## Qualification
 
 Comparer au minimum: tool calling, exactitude des edits, tests, scope, comportement face aux permissions, reprise, coût, tours, latence et `cost_per_verified_success`. Aucun fallback automatique vers un modèle non qualifié.
+
+## Relation avec le control plane Claude
+
+Le control plane 0.2.0-alpha.1 ne change pas cette frontière. Il programme uniquement des workers Claude via Claude Agent SDK. Les modèles externes restent read-only via MCP→LiteLLM jusqu’à qualification séparée d’un harness EXECUTE, d’une sandbox et de leurs propres benchmarks.

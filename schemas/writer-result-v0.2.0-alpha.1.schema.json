@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgeai.local/schemas/writer-result-v0.2.0-alpha.1.schema.json",
+  "title": "ForgeAI Writer Result v0.2.0-alpha.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "summary", "final_commit", "acceptance", "findings"],
+  "properties": {
+    "schema_version": { "const": "forgeai.writer-result.v0.2.0-alpha.1" },
+    "status": { "enum": ["READY_FOR_REVIEW", "BLOCKED"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "final_commit": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "acceptance": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "status": { "enum": ["PASS", "BLOCKED"] },
+          "evidence": { "type": "string", "minLength": 1, "maxLength": 16384 }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "status", "code", "message", "resolution"],
+      "properties": {
+        "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+        "status": { "enum": ["OPEN", "RESOLVED", "ACCEPTED_RISK", "REJECTED"] },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "resolution": { "type": "string", "maxLength": 8192 }
+      }
+    }
+  }
+}
