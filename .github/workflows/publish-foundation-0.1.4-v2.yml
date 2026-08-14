@@ -69,6 +69,7 @@ jobs:
           test "$(wc -c < .forgeai-release/0.1.4/chunk-09a.b64 | tr -d '[:space:]')" -eq 2000
           test "$(wc -c < .forgeai-release/0.1.4/chunk-09b.b64 | tr -d '[:space:]')" -eq 2000
           test "$(wc -c < .forgeai-release/0.1.4/chunk-21.b64 | tr -d '[:space:]')" -eq 2904
+          sha256sum --check --strict .forgeai-release/0.1.4/chunks.sha256
           cat "${parts[@]}" > "$RUNNER_TEMP/foundation-0.1.4.patch.b64"
           printf '%s  %s\n' "$BASE64_SHA256" "$RUNNER_TEMP/foundation-0.1.4.patch.b64" | sha256sum --check --strict
           base64 --decode "$RUNNER_TEMP/foundation-0.1.4.patch.b64" > "$RUNNER_TEMP/foundation-0.1.4.patch.gz"
