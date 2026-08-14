@@ -1,0 +1,115 @@
+name: forgeai-litellm-router-audit
+
+on:
+  push:
+    branches:
+      - forgeai/litellm-router-audit-0.3.0-alpha.1
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: 1c4693241b605a2888e390ece967e3d4dba5fef9
+  RELEASE_TREE: a9cbc2b12c5b9146eeeb64ed4141fd925093a6ee
+  BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  FALLOW_VERSION: '3.10.0'
+
+jobs:
+  fallow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact router HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify exact source identity and native gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+          npm run verify
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run Fallow audit
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          mkdir -p fallow-evidence
+          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain > fallow-evidence/audit.json 2> fallow-evidence/audit.stderr
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat fallow-evidence/audit.stderr >&2
+          cat fallow-evidence/audit.json
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Generate Fallow review guide
+        id: review
+        shell: bash
+        run: |
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" review --base "$BASE_SHA" --walkthrough-guide --format json --quiet > fallow-evidence/review.json 2> fallow-evidence/review.stderr
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat fallow-evidence/review.stderr >&2
+          cat fallow-evidence/review.json
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Surface Fallow security candidates
+        id: security
+        shell: bash
+        run: |
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet > fallow-evidence/security.json 2> fallow-evidence/security.stderr
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat fallow-evidence/security.stderr >&2
+          cat fallow-evidence/security.json
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Seal audit metadata
+        shell: bash
+        env:
+          AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          REVIEW_STATUS: ${{ steps.review.outputs.status }}
+          SECURITY_STATUS: ${{ steps.security.outputs.status }}
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const report = {
+            schema_version: 'forgeai.fallow-audit.v1',
+            release_sha: process.env.RELEASE_SHA,
+            release_tree: process.env.RELEASE_TREE,
+            base_sha: process.env.BASE_SHA,
+            fallow_version: process.env.FALLOW_VERSION,
+            exit_codes: {
+              audit: Number(process.env.AUDIT_STATUS),
+              review: Number(process.env.REVIEW_STATUS),
+              security: Number(process.env.SECURITY_STATUS),
+            },
+          };
+          for (const name of ['audit', 'review', 'security']) {
+            const bytes = readFileSync(`fallow-evidence/${name}.json`);
+            report[`${name}_sha256`] = createHash('sha256').update(bytes).digest('hex');
+          }
+          report.report_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+          writeFileSync('fallow-evidence/metadata.json', `${JSON.stringify(report, null, 2)}\n`);
+          NODE
+          sha256sum fallow-evidence/*.json > fallow-evidence/SHA256SUMS.txt
+          cat fallow-evidence/metadata.json
+      - name: Upload Fallow evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-litellm-router-fallow-1c469324
+          retention-days: 14
+          if-no-files-found: error
+          path: fallow-evidence
