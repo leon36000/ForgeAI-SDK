@@ -6,6 +6,7 @@
 - Résout les hooks via `CLAUDE_PROJECT_DIR` pour rester correct lorsque le cwd change.
 - Convertit toute erreur interne du wrapper de hook en exit code bloquant `2` au lieu d’un fail-open `1`.
 - Protège `.claude/hooks/**` contre les writers et refuse proprement les noms d’outil absents/invalides.
+- Rend la vérification du manifeste complète: fichiers non listés, chemins dupliqués et entrées non régulières bloquent la release.
 - Ajoute des tests adversariaux couvrant ces invariants.
 
 ## 0.1.2 — 2026-08-13
