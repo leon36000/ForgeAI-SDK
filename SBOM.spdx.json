@@ -2,8 +2,8 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ForgeAI-SDK-Foundation-0.1.2",
-  "documentNamespace": "https://forgeai.local/spdx/foundation-0.1.2-2026-08-13",
+  "name": "ForgeAI-SDK-Foundation-0.1.3",
+  "documentNamespace": "https://forgeai.local/spdx/foundation-0.1.3-2026-08-13",
   "creationInfo": {
     "created": "2026-08-13T00:00:00Z",
     "creators": [
@@ -14,7 +14,7 @@
     {
       "name": "@forgeai/foundation",
       "SPDXID": "SPDXRef-Package-Foundation",
-      "versionInfo": "0.1.2",
+      "versionInfo": "0.1.3",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",

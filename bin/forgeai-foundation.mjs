@@ -103,21 +103,24 @@ async function main(argv) {
     const results = await runRequiredGates(task);
     await writeJson(args[1], results);
     const status = results.length === task.required_test_commands.length && results.every((item) => item.status === 'PASS') ? 'PASS' : 'BLOCKED';
-    process.stdout.write(`${JSON.stringify({ status, output: resolve(args[1]), gates: results.length }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ status, output: resolve(args[1]), gates: results.length }, null, 2)}
+`);
     if (status !== 'PASS') process.exitCode = 2;
     return;
   }
   if (command === 'scan-secrets') {
     const result = await scanSecrets(args[0]);
     await writeJson(args[1], result);
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}
+`);
     if (result.status !== 'PASS') process.exitCode = 2;
     return;
   }
   if (command === 'evidence-seal') {
     const result = sealEvidenceBundle(await readJson(args[0]));
     await writeJson(args[1], result);
-    process.stdout.write(`${JSON.stringify({ status: 'PASS', output: resolve(args[1]), bundle_hash: result.bundle_hash })}\n`);
+    process.stdout.write(`${JSON.stringify({ status: 'PASS', output: resolve(args[1]), bundle_hash: result.bundle_hash })}
+`);
     return;
   }
 

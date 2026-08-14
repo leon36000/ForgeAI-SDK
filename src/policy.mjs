@@ -12,6 +12,7 @@ const PROTECTED_PATHS = Object.freeze([
   '.claude/settings.json',
   '.claude/settings.local.json',
   '.claude/agents/**',
+  '.claude/hooks/**',
   '.env', '.env.*', '**/.env', '**/.env.*',
   '**/*.pem', '**/*.key', '**/id_rsa', '**/id_rsa.*',
 ]);
@@ -132,6 +133,9 @@ export function checkNetwork(taskValue, urlValue) {
 
 export function checkToolUse(taskValue, toolName, input = {}) {
   const task = normalizedTaskEnvelope(taskValue);
+  if (typeof toolName !== 'string' || toolName.length === 0) {
+    return decision(false, 'TOOL_INVALID', 'tool name must be a non-empty string');
+  }
   if (WRITE_TOOLS.has(toolName)) {
     const path = input.file_path ?? input.path ?? input.notebook_path;
     return checkPath(task, path, { write: true });

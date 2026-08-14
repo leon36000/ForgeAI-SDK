@@ -1,6 +1,6 @@
-# ForgeAI SDK — Foundation 0.1.2
+# ForgeAI SDK — Foundation 0.1.3
 
-Foundation 0.1.2 est le socle fail-closed qui transforme « l’agent dit DONE » en « le travail est prouvé ». Il est autonome, sans dépendance npm, cible Node.js 20+ et Git, et conserve les contrats machine v0.1.1.
+Foundation 0.1.3 est le socle fail-closed qui transforme « l’agent dit DONE » en « le travail est prouvé ». Il est autonome, sans dépendance npm, cible Node.js 20+ et Git, et conserve les contrats machine v0.1.1.
 
 ## Décisions intégrées
 
@@ -41,4 +41,4 @@ La première commande est un dry-run. L’installation applique les hooks et pro
 
 ## Périmètre
 
-Ce paquet est prêt à intégrer dans `leon36000/ForgeAI-SDK`. L’intégration se fait d’abord sur la branche dédiée `forgeai/foundation-0.1.2`, avec CI et revue indépendante avant toute fusion dans `main`. SonarQube et Neon sont préparés, mais restent inactifs tant que leurs connexions et paramètres réels ne sont pas configurés.
+Ce paquet est prêt à intégrer. Il ne prétend pas être déjà installé dans ton dépôt ForgeAI réel, car aucun dépôt cible n’a été fourni à cette session. SonarQube et Neon sont préparés, mais ne sont pas activés sans leurs connexions et paramètres réels.

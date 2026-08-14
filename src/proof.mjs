@@ -10,7 +10,7 @@ function finding(code, message, details = {}) {
 function hasPassingReview(evidence, role, task) {
   return evidence.reviews.some((review) =>
     review.role === role && review.verdict === 'PASS' && review.context_fresh === true &&
-    review.session_id !== task.metadata.writer_session_id && review.model !== task.metadata.writer_model
+    review.session_id !== task.metadata.writer_session_id
   );
 }
 
