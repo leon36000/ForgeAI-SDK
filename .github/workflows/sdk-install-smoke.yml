@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
-  RELEASE_TREE: 205910a0e3828d68b758e8378272fde150aa5698
+  RELEASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  RELEASE_TREE: dbfe76b324c955089eb87e125bd4bdb5e1dbaa9a
   SDK_PACKAGE: '@anthropic-ai/claude-agent-sdk'
   SDK_VERSION: '0.3.232'
 
@@ -97,7 +97,7 @@ jobs:
       - name: Upload SDK smoke evidence
         uses: actions/upload-artifact@v7
         with:
-          name: forgeai-sdk-install-smoke-f071cae6
+          name: forgeai-sdk-install-smoke-6ac83d07
           retention-days: 14
           if-no-files-found: error
           path: sdk-smoke-evidence
