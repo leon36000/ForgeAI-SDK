@@ -10,7 +10,7 @@ permissions:
 
 env:
   BASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
-  EXPECTED_TREE: dbfe76b62097cb0e1f0194ee78c3e605198352e7
+  EXPECTED_TREE: dbfe76b324c955089eb87e125bd4bdb5e1dbaa9a
   PATCH_SHA256: b9ea4b676b143c37bb14415018c994dfff36d4d868e5960f815dbbcdc4d94ffc
   PATCH_B64_BYTES: '21520'
   TARGET_BRANCH: forgeai/control-plane-0.2.0-alpha.1
@@ -78,4 +78,4 @@ jobs:
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
 
-# Second push intentionally triggers this workflow after it exists on the utility branch.
+# Third push updates the fresh local tree authority and triggers publication.
