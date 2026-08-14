@@ -42,6 +42,36 @@ test('manifest verification rejects unlisted source files', async () => {
   assert.match(result.stderr,/unlisted file: unlisted\.txt/u);
 });
 
+test('manifest verification rejects entries outside source inventory', async () => {
+  const workspace=await tempWorkspace('manifest-');
+  const outside=await tempWorkspace('manifest-outside-');
+  const listed=Buffer.from('listed\n','utf8');
+  const external=Buffer.from('external\n','utf8');
+  const externalPath=join(outside,'external.txt');
+  await writeFile(join(workspace,'listed.txt'),listed);
+  await writeFile(externalPath,external);
+  await writeFile(join(workspace,'SOURCE_MANIFEST.json'),JSON.stringify({
+    schema_version:'forgeai.source-manifest.v0.1.1',
+    generated_at:'2026-08-14T00:00:00.000Z',
+    files:[
+      {
+        path:'listed.txt',
+        bytes:listed.length,
+        sha256:createHash('sha256').update(listed).digest('hex'),
+      },
+      {
+        path:externalPath,
+        bytes:external.length,
+        sha256:createHash('sha256').update(external).digest('hex'),
+      },
+    ],
+  }));
+  const checker=fileURLToPath(new URL('../scripts/check-manifest.mjs',import.meta.url));
+  const result=spawnSync(process.execPath,[checker],{cwd:workspace,encoding:'utf8'});
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/outside source inventory/u);
+});
+
 test('secret scan passes clean files', async () => {
   const workspace=await tempWorkspace(); await writeFile(join(workspace,'src','clean.js'),"export const value = 'public';\n"); const result=await scanSecrets(workspace); assert.equal(result.status,'PASS');
 });
