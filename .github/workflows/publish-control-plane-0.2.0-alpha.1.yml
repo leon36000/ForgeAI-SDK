@@ -13,6 +13,7 @@ env:
   EXPECTED_PARENT_TREE: 925cb1097668874865a68c536c656da3ad504f07
   EXPECTED_TREE: 205910a0e3828d68b758e8378272fde150aa5698
   PATCH_SHA256: 03195f34c173bee34d23e4fd5d1aa1d50d341320e842212ff0ab56dba4ae5fdc
+  BASE64_BYTES: '54576'
   TARGET_BRANCH: forgeai/control-plane-0.2.0-alpha.1
 
 jobs:
@@ -34,13 +35,18 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - name: Verify transport and parent authority
+          package-manager-cache: false
+      - name: Reassemble and verify transport
         shell: bash
         run: |
           set -euo pipefail
-          patch="$GITHUB_WORKSPACE/transport/.forgeai-release/control-plane-0.2.0-alpha.1.patch.gz"
-          printf '%s  %s\n' "$PATCH_SHA256" "$patch" | sha256sum --check --strict
-          gzip --test "$patch"
+          base64_path="$RUNNER_TEMP/control-plane.patch.gz.b64"
+          patch_path="$RUNNER_TEMP/control-plane.patch.gz"
+          cat "$GITHUB_WORKSPACE"/transport/.forgeai-release/control-plane-0.2.0-alpha.1/chunk-*.b64 > "$base64_path"
+          test "$(wc -c < "$base64_path")" -eq "$BASE64_BYTES"
+          base64 --decode "$base64_path" > "$patch_path"
+          printf '%s  %s\n' "$PATCH_SHA256" "$patch_path" | sha256sum --check --strict
+          gzip --test "$patch_path"
           test "$(git -C release rev-parse HEAD)" = "$PARENT_SHA"
           test "$(git -C release rev-parse HEAD^{tree})" = "$EXPECTED_PARENT_TREE"
           if git -C release ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
@@ -52,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gzip --decompress --stdout "$GITHUB_WORKSPACE/transport/.forgeai-release/control-plane-0.2.0-alpha.1.patch.gz" | git apply --index --binary
+          gzip --decompress --stdout "$RUNNER_TEMP/control-plane.patch.gz" | git apply --index --binary
           git diff --cached --check
           actual_tree="$(git write-tree)"
           printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
