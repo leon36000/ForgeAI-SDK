@@ -1,0 +1,75 @@
+name: apply-codeql-cleanup-0.1.4
+
+on:
+  push:
+    branches:
+      - forgeai/codeql-cleanup-0.1.4
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 455f9e567e480e87972a2f5b1588cbc73c4a3e84
+  EXPECTED_TREE: 3220b75270bed192a22a8e24bf3f3a13afda4cbf
+  PATCH_SHA256: 81245951b8d29a94cf2b132697e840b907e9b28d1c8fe3d91fe83fc69a34d101
+  TARGET_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact release base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Decode and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode transport/.forgeai-release/codeql-cleanup-0.1.4.patch.gz.b64 > "$RUNNER_TEMP/codeql-cleanup.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/codeql-cleanup.patch.gz" | sha256sum --check --strict
+      - name: Refuse a moved target branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+      - name: Apply exact patch and verify tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$RUNNER_TEMP/codeql-cleanup.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit and verify release
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'fix: clear CodeQL quality findings'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push atomic cleanup commit
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
