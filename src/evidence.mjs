@@ -3,7 +3,7 @@ import { EVIDENCE_SCHEMA_VERSION, taskEnvelopeHash } from './contracts.mjs';
 import { collectRegularFiles } from './file-tree.mjs';
 import { toPosixPath } from './glob.mjs';
 import { readStableRegularFile } from './safe-file.mjs';
-import { assertIsoDate, assertOnlyKeys, canonicalize, hashCanonical, isPlainObject, sha256, uniqSorted } from './utils.mjs';
+import { assertIsoDate, canonicalize, hashCanonical, isPlainObject, sha256, uniqSorted } from './utils.mjs';
 
 const LIMITS=Object.freeze({bundle_bytes:8*1024*1024,changed_files:4096,gates:512,acceptance:256,reviews:128,findings:2048,artifacts:8192});
 const BUNDLE_KEYS=['schema_version','task_id','task_envelope_hash','base_commit','final_commit','generated_at','changed_files','git','gates','acceptance','reviews','findings','artifacts','ledger_head','human_approval','bundle_hash'];

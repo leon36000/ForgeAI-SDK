@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { appendLedgerEvent, initializeLedger, verifyLedger } from '../src/ledger.mjs';
 import { tempWorkspace } from './helpers.mjs';

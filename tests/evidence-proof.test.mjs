@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { buildArtifactManifest, sealEvidenceBundle, verifyArtifactManifest, verifyEvidenceBundle } from '../src/evidence.mjs';
+import { buildArtifactManifest, verifyArtifactManifest, verifyEvidenceBundle } from '../src/evidence.mjs';
 import { evaluateProof } from '../src/proof.mjs';
 import { sampleEvidence, sampleTask, tempWorkspace } from './helpers.mjs';
 

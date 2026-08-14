@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { checkCommand, checkNetwork, checkPath, checkToolUse, normalizeRepoPath } from '../src/policy.mjs';
+import { checkCommand, checkNetwork, checkPath, checkToolUse } from '../src/policy.mjs';
 import { sampleTask, tempWorkspace } from './helpers.mjs';
 
 test('writer may write in allowed path', async () => {
