@@ -1,0 +1,80 @@
+name: github-models-independent-review-0.1.4
+
+on:
+  push:
+    branches:
+      - forgeai/github-models-review-0.1.4
+
+permissions:
+  contents: read
+  models: read
+
+env:
+  RELEASE_SHA: ad9f3dfbe6d9d6c333620fe59d8bf6999c06403a
+  RELEASE_TREE: 3220b75270bed192a22a8e24bf3f3a13afda4cbf
+  BASE_SHA: 5f94609e98f4882cc891e3c05b3ab83f16300cc4
+  REVIEW_MODEL: openai/gpt-4.1
+
+jobs:
+  independent-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout review control plane
+        uses: actions/checkout@v6
+        with:
+          path: control
+      - name: Checkout exact release HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Run fresh-context GitHub Models review
+        id: reviewer
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node control/.github/scripts/github-models-review.mjs release "$RUNNER_TEMP/github-models-review"
+      - name: Upload independent review evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: github-models-independent-review-ad9f3dfb
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/github-models-review
+      - name: Enforce independent review verdict
+        if: always()
+        env:
+          REVIEWER_OUTCOME: ${{ steps.reviewer.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$REVIEWER_OUTCOME" != success ]; then
+            cat "$RUNNER_TEMP/github-models-review/review-error.json" >&2 || true
+            exit 1
+          fi
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const review = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/github-models-review/independent-review.json`, 'utf8'));
+          const expected = {
+            schema_version: 'forgeai.independent-review.v1',
+            review_type: 'fresh-context-github-models',
+            reviewer_model: process.env.REVIEW_MODEL,
+            head_sha: process.env.RELEASE_SHA,
+            tree_sha: process.env.RELEASE_TREE,
+            base_sha: process.env.BASE_SHA,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (review[key] !== value) throw new Error(`review ${key} mismatch`);
+          }
+          if (review.verdict !== 'PASS') throw new Error(`independent review verdict is ${review.verdict}`);
+          if (review.findings.some((finding) => finding.severity === 'critical' || finding.severity === 'high')) {
+            throw new Error('independent review contains a blocking finding');
+          }
+          console.log(JSON.stringify({ verdict: review.verdict, review_sha256: review.review_sha256, findings: review.findings.length }, null, 2));
+          NODE
