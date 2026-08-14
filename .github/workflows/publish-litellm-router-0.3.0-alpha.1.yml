@@ -11,7 +11,7 @@ permissions:
 env:
   BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
   EXPECTED_TREE: a9cbc2b12c5b9146eeeb64ed4141fd925093a6ee
-  PATCH_SHA256: 0e77ea70143c93cd28aefd884041c8b4e56116a668e3450aa25e5c68efa2bd62
+  PATCH_SHA256: 9847083fcdeaddd63d5c5959f6d8e5e65fba7e07e39f8e6ea42982ea372fdbf1
   PATCH_B64_BYTES: '67232'
   TARGET_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
 
@@ -88,4 +88,4 @@ jobs:
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
 
-# Second push intentionally triggers the sealed publication workflow.
+# Third push binds publication to the freshly recomputed patch SHA-256.
