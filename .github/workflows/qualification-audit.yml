@@ -1,0 +1,231 @@
+name: forgeai-litellm-qualification-audit-0.3.1-alpha.1
+
+on:
+  push:
+    branches:
+      - forgeai/qualification-audit-0.3.1-alpha.1
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  TARGET_BRANCH: forgeai/litellm-qualification-0.3.1-alpha.1
+  BASE_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
+  FALLOW_VERSION: '3.10.0'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve exact open PR and target authority
+        id: authority
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qualification-audit"
+          response="$RUNNER_TEMP/qualification-audit/pulls.json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body --retry 3 \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls?state=open&head=${GITHUB_REPOSITORY_OWNER}:${TARGET_BRANCH}" \
+            -o "$response"
+          node --input-type=module - <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const pulls = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/qualification-audit/pulls.json`, 'utf8'));
+          if (!Array.isArray(pulls) || pulls.length !== 1) throw new Error(`expected exactly one open PR, found ${pulls?.length ?? 'invalid'}`);
+          const pr = pulls[0];
+          if (pr.head.ref !== process.env.TARGET_BRANCH || pr.base.ref !== process.env.BASE_BRANCH || pr.draft !== true) throw new Error('PR branch/base/draft authority mismatch');
+          const values = {
+            pr_number: pr.number,
+            head_sha: pr.head.sha,
+            base_sha: pr.base.sha,
+            head_ref: pr.head.ref,
+            base_ref: pr.base.ref,
+          };
+          writeFileSync(`${process.env.RUNNER_TEMP}/qualification-audit/authority.json`, `${JSON.stringify(values, null, 2)}\n`);
+          writeFileSync(process.env.GITHUB_OUTPUT, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { flag: 'a' });
+          NODE
+      - name: Checkout exact qualification HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.authority.outputs.head_sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify stacked authority and clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qualification-audit"
+          test "$(git rev-parse HEAD)" = '${{ steps.authority.outputs.head_sha }}'
+          test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse '${{ steps.authority.outputs.head_sha }}^{tree}')"
+          git fetch origin "$BASE_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = '${{ steps.authority.outputs.base_sha }}'
+          git merge-base --is-ancestor '${{ steps.authority.outputs.base_sha }}' HEAD
+          printf '%s\n' "$(git rev-parse HEAD)" > "$evidence/HEAD"
+          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$evidence/TREE"
+          printf '%s\n' '${{ steps.authority.outputs.base_sha }}' > "$evidence/BASE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run native quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qualification-audit"
+          npm test | tee "$evidence/tests.log"
+          npm run lint | tee "$evidence/lint.log"
+          npm run verify | tee "$evidence/verify.log"
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Prove operational policy remains unqualified
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qualification-audit"
+          node --input-type=module - <<'NODE' | tee "$RUNNER_TEMP/qualification-audit/policy-check.json"
+          import { readFileSync } from 'node:fs';
+          const policy = JSON.parse(readFileSync('config/litellm-router-policy.json', 'utf8'));
+          const routes = policy.routes.map(({ route_id, status, qualification }) => ({ route_id, status, qualification }));
+          if (!routes.every((route) => route.status === 'UNQUALIFIED' && route.qualification === null)) throw new Error('operational policy contains a promoted route');
+          console.log(JSON.stringify({ status: 'PASS', routes, automatic_promotion: false }, null, 2));
+          NODE
+          if git diff --name-only '${{ steps.authority.outputs.base_sha }}'...HEAD | grep -qx 'config/litellm-router-policy.json'; then
+            echo 'qualification harness must not modify operational policy' >&2
+            exit 1
+          fi
+      - name: Run Fallow audit
+        id: fallow_audit
+        shell: bash
+        run: |
+          set +e
+          evidence="$RUNNER_TEMP/qualification-audit"
+          npx -y "fallow@$FALLOW_VERSION" audit --base '${{ steps.authority.outputs.base_sha }}' --format json --quiet --explain > "$evidence/fallow-audit.json" 2> "$evidence/fallow-audit.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$evidence/fallow-audit.stderr" >&2
+          cat "$evidence/fallow-audit.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Generate Fallow review guide
+        id: fallow_review
+        shell: bash
+        run: |
+          set +e
+          evidence="$RUNNER_TEMP/qualification-audit"
+          npx -y "fallow@$FALLOW_VERSION" review --base '${{ steps.authority.outputs.base_sha }}' --walkthrough-guide --format json --quiet > "$evidence/fallow-review.json" 2> "$evidence/fallow-review.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$evidence/fallow-review.stderr" >&2
+          cat "$evidence/fallow-review.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Surface Fallow security candidates
+        id: fallow_security
+        shell: bash
+        run: |
+          set +e
+          evidence="$RUNNER_TEMP/qualification-audit"
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since '${{ steps.authority.outputs.base_sha }}' --surface --format json --quiet > "$evidence/fallow-security.json" 2> "$evidence/fallow-security.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$evidence/fallow-security.stderr" >&2
+          cat "$evidence/fallow-security.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Seal exact source and audit metadata
+        id: seal
+        shell: bash
+        env:
+          AUDIT_STATUS: ${{ steps.fallow_audit.outputs.status }}
+          REVIEW_STATUS: ${{ steps.fallow_review.outputs.status }}
+          SECURITY_STATUS: ${{ steps.fallow_security.outputs.status }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qualification-audit"
+          tar --exclude=.git -czf "$evidence/source.tar.gz" .
+          node --input-type=module - <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const evidence = `${process.env.RUNNER_TEMP}/qualification-audit`;
+          const hash = (name) => createHash('sha256').update(readFileSync(`${evidence}/${name}`)).digest('hex');
+          const testText = readFileSync(`${evidence}/tests.log`, 'utf8');
+          const tests = Number(testText.match(/^# tests (\d+)$/mu)?.[1] ?? 0);
+          if (!Number.isInteger(tests) || tests < 1) throw new Error('unable to derive test count');
+          const report = {
+            schema_version: 'forgeai.litellm-qualification-audit.v0.3.1-alpha.1',
+            pr_number: Number('${{ steps.authority.outputs.pr_number }}'),
+            head_sha: readFileSync(`${evidence}/HEAD`, 'utf8').trim(),
+            tree_sha: readFileSync(`${evidence}/TREE`, 'utf8').trim(),
+            base_sha: readFileSync(`${evidence}/BASE`, 'utf8').trim(),
+            tests,
+            native_gates: 'PASS',
+            operational_policy: 'UNCHANGED_AND_UNQUALIFIED',
+            automatic_promotion: false,
+            fallow_version: process.env.FALLOW_VERSION,
+            fallow_exit_codes: {
+              audit: Number(process.env.AUDIT_STATUS),
+              review: Number(process.env.REVIEW_STATUS),
+              security: Number(process.env.SECURITY_STATUS),
+            },
+            hashes: {
+              tests: hash('tests.log'),
+              lint: hash('lint.log'),
+              verify: hash('verify.log'),
+              policy_check: hash('policy-check.json'),
+              fallow_audit: hash('fallow-audit.json'),
+              fallow_review: hash('fallow-review.json'),
+              fallow_security: hash('fallow-security.json'),
+              source_archive: hash('source.tar.gz'),
+            },
+            workflow_run_id: process.env.GITHUB_RUN_ID,
+          };
+          report.report_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+          writeFileSync(`${evidence}/metadata.json`, `${JSON.stringify(report, null, 2)}\n`);
+          const security = report.fallow_exit_codes.security === 0 ? 'aucun candidat sécurité Fallow signalé' : 'signaux Fallow à classifier';
+          const body = [
+            '## Audit automatisé du harness de qualification',
+            '',
+            `- HEAD : \`${report.head_sha}\``,
+            `- tree : \`${report.tree_sha}\``,
+            `- base routeur : \`${report.base_sha}\``,
+            `- tests : **${report.tests}/${report.tests} PASS**`,
+            '- manifeste, lint, audit interne et release verification : **PASS**',
+            '- policy opérationnelle : **inchangée et entièrement UNQUALIFIED**',
+            '- promotion automatique : **absente**',
+            `- Fallow 3.10.0 : audit=${report.fallow_exit_codes.audit}, review=${report.fallow_exit_codes.review}, security=${report.fallow_exit_codes.security} — ${security}`,
+            `- source archive SHA-256 : \`${report.hashes.source_archive}\``,
+            `- preuve agrégée SHA-256 : \`${report.report_sha256}\``,
+            `- workflow run : \`${report.workflow_run_id}\``,
+            '',
+            'Cette preuve valide le harness automatisable, pas un modèle réel. Aucun tuple route/provider/capability/mode n’est qualifié par cette CI.',
+          ].join('\n');
+          writeFileSync(`${evidence}/pr-comment.json`, JSON.stringify({ body }));
+          NODE
+          sha256sum "$evidence"/* > "$evidence/SHA256SUMS.txt"
+          cat "$evidence/metadata.json"
+      - name: Upload qualification audit evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-litellm-qualification-audit-0.3.1-alpha.1
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/qualification-audit
+      - name: Comment exact authority on PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail-with-body --retry 3 \
+            -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/${{ steps.authority.outputs.pr_number }}/comments" \
+            --data-binary "@$RUNNER_TEMP/qualification-audit/pr-comment.json"
