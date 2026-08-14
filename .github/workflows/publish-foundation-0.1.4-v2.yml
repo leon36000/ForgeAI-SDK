@@ -1,0 +1,117 @@
+name: publish-foundation-0.1.4-v2
+
+on:
+  push:
+    branches:
+      - forgeai/transport-0.1.4-v2
+
+permissions:
+  contents: write
+
+env:
+  PARENT_SHA: 7f635721a0958cd92ad970c0010b363a09200c86
+  EXPECTED_TREE: 2520d2f163c2b6f0ecf7112028c9cf325d41ca31
+  BASE64_SHA256: cc489169544ef8b1f2c5015833f1429cf9c8140add9e03012ce51b9d67114336
+  PATCH_SHA256: b76d1f929acd8ab202c4083b10b9c5eb8639cf0efabd841c5ef4efd503b9361b
+  RELEASE_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Verify transport inventory and reconstruct patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts=(
+            .forgeai-release/0.1.4/chunk-00.b64
+            .forgeai-release/0.1.4/chunk-01.b64
+            .forgeai-release/0.1.4/chunk-02.b64
+            .forgeai-release/0.1.4/chunk-03.b64
+            .forgeai-release/0.1.4/chunk-04.b64
+            .forgeai-release/0.1.4/chunk-05.b64
+            .forgeai-release/0.1.4/chunk-06.b64
+            .forgeai-release/0.1.4/chunk-07.b64
+            .forgeai-release/0.1.4/chunk-08.b64
+            .forgeai-release/0.1.4/chunk-09a.b64
+            .forgeai-release/0.1.4/chunk-09b.b64
+            .forgeai-release/0.1.4/chunk-10.b64
+            .forgeai-release/0.1.4/chunk-11.b64
+            .forgeai-release/0.1.4/chunk-12.b64
+            .forgeai-release/0.1.4/chunk-13.b64
+            .forgeai-release/0.1.4/chunk-14.b64
+            .forgeai-release/0.1.4/chunk-15.b64
+            .forgeai-release/0.1.4/chunk-16.b64
+            .forgeai-release/0.1.4/chunk-17.b64
+            .forgeai-release/0.1.4/chunk-18.b64
+            .forgeai-release/0.1.4/chunk-19.b64
+            .forgeai-release/0.1.4/chunk-20.b64
+            .forgeai-release/0.1.4/chunk-21.b64
+          )
+          test "${#parts[@]}" -eq 23
+          actual_count="$(find .forgeai-release/0.1.4 -maxdepth 1 -type f -name 'chunk-*.b64' | wc -l | tr -d '[:space:]')"
+          test "$actual_count" -eq 23
+          for part in "${parts[@]}"; do test -f "$part"; done
+          for part in "${parts[@]:0:9}" "${parts[@]:11:11}"; do
+            test "$(wc -c < "$part" | tr -d '[:space:]')" -eq 4000
+          done
+          test "$(wc -c < .forgeai-release/0.1.4/chunk-09a.b64 | tr -d '[:space:]')" -eq 2000
+          test "$(wc -c < .forgeai-release/0.1.4/chunk-09b.b64 | tr -d '[:space:]')" -eq 2000
+          test "$(wc -c < .forgeai-release/0.1.4/chunk-21.b64 | tr -d '[:space:]')" -eq 2904
+          cat "${parts[@]}" > "$RUNNER_TEMP/foundation-0.1.4.patch.b64"
+          printf '%s  %s\n' "$BASE64_SHA256" "$RUNNER_TEMP/foundation-0.1.4.patch.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/foundation-0.1.4.patch.b64" > "$RUNNER_TEMP/foundation-0.1.4.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-0.1.4.patch.gz" | sha256sum --check --strict
+
+      - name: Refuse an existing release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "refs/heads/$RELEASE_BRANCH" >/dev/null 2>&1; then
+            echo "Release branch already exists: $RELEASE_BRANCH" >&2
+            exit 1
+          fi
+
+      - name: Apply exact patch to exact parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$PARENT_SHA"
+          test "$(git rev-parse HEAD)" = "$PARENT_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          gzip --decompress --stdout "$RUNNER_TEMP/foundation-0.1.4.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+
+      - name: Create and verify release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'feat: harden Foundation 0.1.4'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Push verified release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
