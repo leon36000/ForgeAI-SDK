@@ -1,0 +1,80 @@
+name: publish-foundation-0.1.4
+
+on:
+  push:
+    branches:
+      - forgeai/transport-0.1.4-final
+
+permissions:
+  contents: write
+
+env:
+  PARENT_SHA: 7f635721a0958cd92ad970c0010b363a09200c86
+  EXPECTED_TREE: 2520d2fd838e0ce25e39fb0591a9c44dfeb3b7a2
+  PATCH_URL: https://0x0.st/KyX1.gz
+  PATCH_SHA256: 09c0e0a1991bfe9315228d81ec03d19b8e7c6f53be83f5b2c28622190ed9be2e
+  RELEASE_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact 0.1.3 parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PARENT_SHA }}
+          fetch-depth: 0
+
+      - name: Refuse an existing release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "refs/heads/$RELEASE_BRANCH" >/dev/null 2>&1; then
+            echo "Release branch already exists: $RELEASE_BRANCH" >&2
+            exit 1
+          fi
+
+      - name: Download and verify release patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --max-time 120 "$PATCH_URL" -o "$RUNNER_TEMP/foundation-0.1.4.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-0.1.4.patch.gz" | sha256sum --check --strict
+
+      - name: Apply patch and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PARENT_SHA"
+          gzip --decompress --stdout "$RUNNER_TEMP/foundation-0.1.4.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+
+      - name: Create exact release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'feat: harden Foundation 0.1.4'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          git status --porcelain=v1 --untracked-files=all | tee "$RUNNER_TEMP/status-before-verify.txt"
+          test ! -s "$RUNNER_TEMP/status-before-verify.txt"
+
+      - name: Re-run release verification on clean commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Push release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
