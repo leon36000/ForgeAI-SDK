@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p sdk-smoke-evidence
-          npm run control-plane -- doctor | tee sdk-smoke-evidence/doctor.json
+          node bin/forgeai-control-plane.mjs doctor | tee sdk-smoke-evidence/doctor.json
           node --input-type=module - <<'NODE'
           import { createHash } from 'node:crypto';
           import { writeFileSync } from 'node:fs';
@@ -95,5 +95,3 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: sdk-smoke-evidence
-
-# Second push intentionally triggers the workflow after the workflow file exists on this branch.
