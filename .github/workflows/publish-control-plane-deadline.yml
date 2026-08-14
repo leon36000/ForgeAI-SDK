@@ -1,0 +1,79 @@
+name: publish-control-plane-deadline-hardening
+
+on:
+  push:
+    branches:
+      - forgeai/control-plane-deadline-publish-0.2.0-alpha.1
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
+  EXPECTED_TREE: dbfe76b62097cb0e1f0194ee78c3e605198352e7
+  PATCH_SHA256: b9ea4b676b143c37bb14415018c994dfff36d4d868e5960f815dbbcdc4d94ffc
+  PATCH_B64_BYTES: '21520'
+  TARGET_BRANCH: forgeai/control-plane-0.2.0-alpha.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact control-plane parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Decode and verify sealed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='transport/.forgeai-release/control-plane-deadline/chunk-00.b64'
+          test "$(wc -c < "$payload")" -eq "$PATCH_B64_BYTES"
+          base64 --decode "$payload" > "$RUNNER_TEMP/control-plane-deadline.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/control-plane-deadline.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/control-plane-deadline.patch.gz"
+      - name: Refuse a moved target branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+      - name: Apply exact patch and verify Git tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$RUNNER_TEMP/control-plane-deadline.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit and verify clean release
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'fix: enforce absolute SDK deadlines'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push exact control-plane branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
