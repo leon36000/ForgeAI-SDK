@@ -1,0 +1,166 @@
+name: forgeai-router-audit-0.3.0-alpha.1
+
+on:
+  push:
+    branches:
+      - forgeai/router-audit-0.3.0-alpha.1
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  TARGET_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
+  BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  FALLOW_VERSION: '3.10.0'
+  PR_NUMBER: '11'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact router branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify authority and run native gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/router-audit"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          printf '%s\n' "$(git rev-parse HEAD)" > "$RUNNER_TEMP/router-audit/HEAD"
+          printf '%s\n' "$(git rev-parse HEAD^{tree})" > "$RUNNER_TEMP/router-audit/TREE"
+          printf '%s\n' "$BASE_SHA" > "$RUNNER_TEMP/router-audit/BASE"
+          npm test | tee "$RUNNER_TEMP/router-audit/tests.log"
+          npm run lint | tee "$RUNNER_TEMP/router-audit/lint.log"
+          npm run verify | tee "$RUNNER_TEMP/router-audit/verify.log"
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run Fallow audit
+        id: fallow-audit
+        shell: bash
+        run: |
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain > "$RUNNER_TEMP/router-audit/fallow-audit.json" 2> "$RUNNER_TEMP/router-audit/fallow-audit.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/router-audit/fallow-audit.stderr" >&2
+          cat "$RUNNER_TEMP/router-audit/fallow-audit.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Generate Fallow review guide
+        id: fallow-review
+        shell: bash
+        run: |
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" review --base "$BASE_SHA" --walkthrough-guide --format json --quiet > "$RUNNER_TEMP/router-audit/fallow-review.json" 2> "$RUNNER_TEMP/router-audit/fallow-review.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/router-audit/fallow-review.stderr" >&2
+          cat "$RUNNER_TEMP/router-audit/fallow-review.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Surface Fallow security candidates
+        id: fallow-security
+        shell: bash
+        run: |
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet > "$RUNNER_TEMP/router-audit/fallow-security.json" 2> "$RUNNER_TEMP/router-audit/fallow-security.stderr"
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/router-audit/fallow-security.stderr" >&2
+          cat "$RUNNER_TEMP/router-audit/fallow-security.json"
+          if [ "$status" -eq 2 ]; then exit 2; fi
+      - name: Seal source archive and metadata
+        id: seal
+        shell: bash
+        env:
+          AUDIT_STATUS: ${{ steps.fallow-audit.outputs.status }}
+          REVIEW_STATUS: ${{ steps.fallow-review.outputs.status }}
+          SECURITY_STATUS: ${{ steps.fallow-security.outputs.status }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/router-audit"
+          tar --exclude=.git -czf "$evidence/source.tar.gz" .
+          node --input-type=module - <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const evidence = `${process.env.RUNNER_TEMP}/router-audit`;
+          const hashFile = (name) => createHash('sha256').update(readFileSync(`${evidence}/${name}`)).digest('hex');
+          const testLog = readFileSync(`${evidence}/tests.log`, 'utf8');
+          const testCount = Number(testLog.match(/^# tests (\d+)$/mu)?.[1] ?? 0);
+          const report = {
+            schema_version: 'forgeai.router-audit.v0.3.0-alpha.1',
+            head_sha: readFileSync(`${evidence}/HEAD`, 'utf8').trim(),
+            tree_sha: readFileSync(`${evidence}/TREE`, 'utf8').trim(),
+            base_sha: process.env.BASE_SHA,
+            tests: testCount,
+            native_gates: 'PASS',
+            fallow_version: process.env.FALLOW_VERSION,
+            fallow_exit_codes: {
+              audit: Number(process.env.AUDIT_STATUS),
+              review: Number(process.env.REVIEW_STATUS),
+              security: Number(process.env.SECURITY_STATUS),
+            },
+            hashes: {
+              tests: hashFile('tests.log'),
+              lint: hashFile('lint.log'),
+              verify: hashFile('verify.log'),
+              fallow_audit: hashFile('fallow-audit.json'),
+              fallow_review: hashFile('fallow-review.json'),
+              fallow_security: hashFile('fallow-security.json'),
+              source_archive: hashFile('source.tar.gz'),
+            },
+            workflow_run_id: process.env.GITHUB_RUN_ID,
+          };
+          report.report_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+          writeFileSync(`${evidence}/metadata.json`, `${JSON.stringify(report, null, 2)}\n`);
+          const securityText = Number(process.env.SECURITY_STATUS) === 0 ? 'aucun candidat sécurité Fallow signalé' : 'signaux Fallow à classifier manuellement';
+          const body = [
+            '## Audit indépendant automatisé lié au HEAD',
+            '',
+            `- HEAD : \`${report.head_sha}\``,
+            `- tree : \`${report.tree_sha}\``,
+            `- base control plane : \`${report.base_sha}\``,
+            `- tests : **${report.tests}/${report.tests} PASS**`,
+            '- manifeste, lint, audit interne et release verification : **PASS**',
+            `- Fallow 3.10.0 : audit=${report.fallow_exit_codes.audit}, review=${report.fallow_exit_codes.review}, security=${report.fallow_exit_codes.security} — ${securityText}`,
+            `- archive source SHA-256 : \`${report.hashes.source_archive}\``,
+            `- preuve agrégée SHA-256 : \`${report.report_sha256}\``,
+            `- workflow run : \`${report.workflow_run_id}\``,
+            '',
+            'Cette preuve ne qualifie aucun modèle LiteLLM et ne remplace pas une review humaine/agent indépendante du code. Les routes versionnées restent `UNQUALIFIED`.',
+          ].join('\n');
+          writeFileSync(`${evidence}/pr-comment.md`, `${body}\n`);
+          writeFileSync(`${evidence}/pr-comment.json`, JSON.stringify({ body }));
+          NODE
+          sha256sum "$evidence"/* > "$evidence/SHA256SUMS.txt"
+          cat "$evidence/metadata.json"
+      - name: Upload router audit evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-router-audit-0.3.0-alpha.1
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/router-audit
+      - name: Comment audit authority on PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail-with-body --retry 3 \
+            -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --data-binary "@$RUNNER_TEMP/router-audit/pr-comment.json"
