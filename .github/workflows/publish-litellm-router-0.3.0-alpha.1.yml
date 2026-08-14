@@ -1,0 +1,89 @@
+name: publish-litellm-router-0.3.0-alpha.1
+
+on:
+  push:
+    branches:
+      - forgeai/litellm-router-publish-v2-0.3.0-alpha.1
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  EXPECTED_TREE: a9cbc2b12c5b9146eeeb64ed4141fd925093a6ee
+  PATCH_SHA256: 0e77ea70143c93cd28aefd884041c8b4e56116a668e3450aa25e5c68efa2bd62
+  PATCH_B64_BYTES: '67232'
+  TARGET_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact control-plane parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Reassemble and verify sealed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/litellm-router.patch.gz.b64"
+          cat \
+            transport/.forgeai-release/litellm-router-v2/chunk-00-fixed.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-01.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-02.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-03.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-04.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-05.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-06.b64 \
+            transport/.forgeai-release/litellm-router-v2/chunk-07.b64 > "$out"
+          test "$(wc -c < "$out")" -eq "$PATCH_B64_BYTES"
+          base64 --decode "$out" > "$RUNNER_TEMP/litellm-router.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/litellm-router.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/litellm-router.patch.gz"
+      - name: Refuse an existing target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Target branch already exists: $TARGET_BRANCH" >&2
+            exit 1
+          fi
+      - name: Apply exact patch and verify Git tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          gzip --decompress --stdout "$RUNNER_TEMP/litellm-router.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit and verify clean release
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'feat: add MCP LiteLLM read-only router 0.3.0-alpha.1'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push exact release branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
