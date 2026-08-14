@@ -29,12 +29,15 @@ jobs:
         with:
           node-version: '20'
           registry-url: https://registry.npmjs.org
-      - name: Verify exact source identity
+      - name: Verify exact source and clean baseline
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          npm run verify | tee "$RUNNER_TEMP/baseline-verification.log"
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
       - name: Install exact SDK without persisting dependencies
         shell: bash
         run: |
@@ -47,6 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p sdk-smoke-evidence
+          cp "$RUNNER_TEMP/baseline-verification.log" sdk-smoke-evidence/baseline-verification.log
           node bin/forgeai-control-plane.mjs doctor | tee sdk-smoke-evidence/doctor.json
           node --input-type=module - <<'NODE'
           import { createHash } from 'node:crypto';
@@ -74,19 +78,21 @@ jobs:
           if (pkg.name !== process.env.SDK_PACKAGE || pkg.version !== process.env.SDK_VERSION || typeof sdk.query !== 'function') process.exit(1);
           NODE
           node -e "const r=require('./sdk-smoke-evidence/doctor.json'); if(r.status!=='PASS'||r.expected.version!==process.env.SDK_VERSION||r.installed.version!==process.env.SDK_VERSION) process.exit(1)"
-      - name: Re-run full release verification with SDK installed
+      - name: Prove installation did not alter tracked source
         shell: bash
         run: |
           set -euo pipefail
-          npm run verify | tee sdk-smoke-evidence/verification.log
-          grep -q '^PASS ' verification/VERIFIED
-          git status --porcelain=v1 --untracked-files=all | grep -v '^?? sdk-smoke-evidence/' | tee sdk-smoke-evidence/git-status.txt
-          test ! -s sdk-smoke-evidence/git-status.txt
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          git diff --exit-code -- .
+          git diff --cached --exit-code -- .
+          test ! -e package-lock.json
+          printf '%s\n' "tracked source unchanged after exact SDK installation" | tee sdk-smoke-evidence/source-integrity.txt
       - name: Seal smoke evidence
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum sdk-smoke-evidence/doctor.json sdk-smoke-evidence/import.json sdk-smoke-evidence/verification.log > sdk-smoke-evidence/SHA256SUMS.txt
+          sha256sum sdk-smoke-evidence/baseline-verification.log sdk-smoke-evidence/doctor.json sdk-smoke-evidence/import.json sdk-smoke-evidence/source-integrity.txt > sdk-smoke-evidence/SHA256SUMS.txt
           cat sdk-smoke-evidence/SHA256SUMS.txt
       - name: Upload SDK smoke evidence
         uses: actions/upload-artifact@v7
