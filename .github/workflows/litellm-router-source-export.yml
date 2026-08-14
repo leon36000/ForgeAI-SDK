@@ -1,0 +1,41 @@
+name: forgeai-litellm-router-source-export
+
+on:
+  push:
+    branches:
+      - forgeai/litellm-router-source-export-0.3.0-alpha.1
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: 1c4693241b605a2888e390ece967e3d4dba5fef9
+  RELEASE_TREE: a9cbc2b12c5b9146eeeb64ed4141fd925093a6ee
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 1
+      - name: Verify and archive exact router source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          npm run verify
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          tar --exclude=.git -czf "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" .
+          sha256sum "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" > "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-litellm-router-source-1c469324
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/forgeai-source-${{ env.RELEASE_SHA }}.tar.gz
+            ${{ runner.temp }}/forgeai-source-${{ env.RELEASE_SHA }}.tar.gz.sha256
