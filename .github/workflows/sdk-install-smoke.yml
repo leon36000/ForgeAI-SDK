@@ -48,9 +48,9 @@ jobs:
           set -euo pipefail
           mkdir -p sdk-smoke-evidence
           npm run control-plane -- doctor | tee sdk-smoke-evidence/doctor.json
-          node --input-type=module - <<'NODE' | tee sdk-smoke-evidence/import.json
+          node --input-type=module - <<'NODE'
           import { createHash } from 'node:crypto';
-          import { readFileSync, writeFileSync } from 'node:fs';
+          import { writeFileSync } from 'node:fs';
           import { createRequire } from 'node:module';
           const require = createRequire(import.meta.url);
           const pkg = require('./node_modules/@anthropic-ai/claude-agent-sdk/package.json');
@@ -69,8 +69,8 @@ jobs:
             arch: process.arch,
           };
           report.report_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
-          console.log(JSON.stringify(report, null, 2));
           writeFileSync('sdk-smoke-evidence/import.json', `${JSON.stringify(report, null, 2)}\n`);
+          console.log(JSON.stringify(report, null, 2));
           if (pkg.name !== process.env.SDK_PACKAGE || pkg.version !== process.env.SDK_VERSION || typeof sdk.query !== 'function') process.exit(1);
           NODE
           node -e "const r=require('./sdk-smoke-evidence/doctor.json'); if(r.status!=='PASS'||r.expected.version!==process.env.SDK_VERSION||r.installed.version!==process.env.SDK_VERSION) process.exit(1)"
@@ -95,3 +95,5 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: sdk-smoke-evidence
+
+# Second push intentionally triggers the workflow after the workflow file exists on this branch.
