@@ -1,0 +1,78 @@
+name: apply-hook-exec-fix-0.1.4
+
+on:
+  push:
+    branches:
+      - forgeai/hook-exec-fix-0.1.4
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: ad9f3dfbe6d9d6c333620fe59d8bf6999c06403a
+  EXPECTED_TREE: 925cb1097668874865a68c536c656da3ad504f07
+  PATCH_SHA256: 8d13e33110bb96f33380473af063d478de2b547f2376ba2d3f052930e84b6054
+  TARGET_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact release base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Reassemble and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat transport/.forgeai-release/hook-exec-fix/chunk-*.b64 > "$RUNNER_TEMP/hook-exec-fix.patch.gz.b64"
+          test "$(wc -c < "$RUNNER_TEMP/hook-exec-fix.patch.gz.b64")" -eq 12800
+          base64 --decode "$RUNNER_TEMP/hook-exec-fix.patch.gz.b64" > "$RUNNER_TEMP/hook-exec-fix.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/hook-exec-fix.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/hook-exec-fix.patch.gz"
+      - name: Refuse a moved target branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+      - name: Apply exact patch and verify tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$RUNNER_TEMP/hook-exec-fix.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit and verify release
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'fix: install Claude hooks in native exec form'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push atomic hook fix
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
