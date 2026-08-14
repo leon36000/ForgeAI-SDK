@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 25105445c1302ca002ac2532ec4ba10b16733126
+  RELEASE_SHA: f071cae6fe3cc4d2c47f891adf611176210e5f57
 
 jobs:
   export:
@@ -20,7 +20,7 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 1
-      - name: Verify and archive exact release source
+      - name: Verify and archive exact control-plane source
         shell: bash
         run: |
           set -euo pipefail
@@ -29,7 +29,7 @@ jobs:
           sha256sum "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz" > "$RUNNER_TEMP/forgeai-source-$RELEASE_SHA.tar.gz.sha256"
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-source-25105445
+          name: forgeai-source-f071cae6
           retention-days: 1
           if-no-files-found: error
           path: |
