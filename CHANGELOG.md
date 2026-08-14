@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0-alpha.1 — 2026-08-14
+
+- Ajoute un control plane programmable autour du Claude Agent SDK, sans modifier les verdicts Foundation.
+- Épingle l’adaptateur live à `@anthropic-ai/claude-agent-sdk@0.3.232` et bloque si le package est absent ou différent.
+- Exécute séquentiellement un writer unique, les gates déterministes, puis un reviewer read-only dans une session fraîche.
+- Ajoute des sorties structurées strictes pour writer et reviewer, des limites de tours/coût, un ledger de cycle de vie et un résultat `PASS`/`BLOCKED`.
+- Réutilise Git proof, EvidenceBundle, artefacts et PROOF de Foundation au lieu de dupliquer les autorités de qualité.
+- Refuse R2/R3 dans cet alpha; aucun worker MCP→LiteLLM n’obtient EXECUTE.
+- Qualifie chaque run avant le SDK: harness exact, writer unique, modèle lié, SHA complet et absence de MCP, réseau ou commande directement réseau-capable.
+- Filtre l’environnement du subprocessus SDK afin de ne transmettre que runtime, proxy/certificats et authentification fournisseur nécessaires.
+- Borne la capacité réelle avec `tools`, aligne `allowedTools` sur le même ensemble et désactive explicitement MCP.
+- Force la sandbox SDK en fail-closed, sans escape non sandboxé, réseau, socket ni binding local.
+- Ajoute une CLI `doctor`/`run` et des tests fake-SDK sur de vrais dépôts Git temporaires.
+
 ## 0.1.4 — 2026-08-14
 
 - Remplace les globs regex dynamiques par un automate borné, fermant le risque ReDoS.

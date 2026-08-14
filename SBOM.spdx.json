@@ -2,40 +2,62 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ForgeAI-SDK-Foundation-0.1.4",
-  "documentNamespace": "https://forgeai.local/spdx/foundation-0.1.4-2026-08-14",
+  "name": "ForgeAI-SDK-Control-Plane-0.2.0-alpha.1",
+  "documentNamespace": "https://forgeai.local/spdx/control-plane-0.2.0-alpha.1-2026-08-14",
   "creationInfo": {
     "created": "2026-08-14T00:00:00Z",
     "creators": [
-      "Tool: ForgeAI Foundation release process"
+      "Tool: ForgeAI verified release process"
     ]
   },
   "packages": [
     {
       "name": "@forgeai/foundation",
-      "SPDXID": "SPDXRef-Package-Foundation",
-      "versionInfo": "0.1.4",
+      "SPDXID": "SPDXRef-Package-ForgeAI",
+      "versionInfo": "0.2.0-alpha.1",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
       "copyrightText": "NOASSERTION",
       "externalRefs": []
+    },
+    {
+      "name": "@anthropic-ai/claude-agent-sdk",
+      "SPDXID": "SPDXRef-Package-ClaudeAgentSDK",
+      "versionInfo": "0.3.232",
+      "downloadLocation": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.3.232.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/%40anthropic-ai/claude-agent-sdk@0.3.232"
+        }
+      ]
     }
   ],
   "relationships": [
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Foundation"
+      "relatedSpdxElement": "SPDXRef-Package-ForgeAI"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-ForgeAI",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ClaudeAgentSDK"
     }
   ],
   "annotations": [
     {
-      "annotationDate": "2026-08-13T00:00:00Z",
+      "annotationDate": "2026-08-14T00:00:00Z",
       "annotationType": "OTHER",
-      "annotator": "Tool: ForgeAI Foundation release process",
-      "comment": "Zero npm runtime and development dependencies. Requires Node.js and Git from the host."
+      "annotator": "Tool: ForgeAI verified release process",
+      "comment": "Foundation has zero declared npm runtime and development dependencies. Live control-plane execution requires the separately installed exact Claude Agent SDK version recorded above."
     }
   ]
 }
