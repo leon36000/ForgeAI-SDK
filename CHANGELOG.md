@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3 — 2026-08-13
+
+- Définit l’indépendance du reviewer par contexte/session fraîche plutôt que par modèle différent; le même modèle peut reviewer avec une session indépendante.
+- Résout les hooks via `CLAUDE_PROJECT_DIR` pour rester correct lorsque le cwd change.
+- Convertit toute erreur interne du wrapper de hook en exit code bloquant `2` au lieu d’un fail-open `1`.
+- Protège `.claude/hooks/**` contre les writers et refuse proprement les noms d’outil absents/invalides.
+- Ajoute des tests adversariaux couvrant ces invariants.
+- Corrige la CI pour ne pas activer le cache npm en l’absence de lockfile.
+
 ## 0.1.2 — 2026-08-13
 
 - Corrige la détection Anthropic/OpenAI afin d’éviter un finding fournisseur ambigu.
