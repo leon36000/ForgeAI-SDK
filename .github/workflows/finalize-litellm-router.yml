@@ -12,11 +12,10 @@ env:
   PARENT_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
   RELEASE_VERSION: 0.3.0-alpha.1
   RELEASE_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
-  CI_ONLY_PREFIX: 'chore: trigger CI on sealed LiteLLM router tree'
 
 jobs:
   finalize:
-    if: ${{ github.actor != 'github-actions[bot]' && startsWith(github.event.head_commit.message, 'chore: trigger CI on sealed LiteLLM router tree') == false }}
+    if: "${{ github.actor != 'github-actions[bot]' && startsWith(github.event.head_commit.message, 'chore: trigger CI on sealed LiteLLM router tree') == false }}"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
