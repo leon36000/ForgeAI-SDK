@@ -74,6 +74,7 @@ export function createAdvisoryRouter({ policy: policyValue, env = process.env, f
     const deadlineAt = clock() + request.timeout_ms;
     const budget = createBudgetTracker({ maxCostUsd: request.max_cost_usd, maxTotalTokens: request.max_total_tokens, deadlineAt, clock });
     const attempts = [];
+    let lastRetryableFailure = null;
     const prompts = buildAdvisoryPrompts(request);
 
     for (const route of candidates) {
@@ -149,6 +150,7 @@ export function createAdvisoryRouter({ policy: policyValue, env = process.env, f
           const terminal = error instanceof RouterBudgetError || error?.responseReceived === true || error?.terminal === true || error?.retryable !== true;
           if (terminal) return blockedResult({ request, startedAt, clock, code: failure.code, message: failure.message, attempts, accounting: budget.snapshot(), rejected: selection.rejected });
           routeFailedRetryably = true;
+          lastRetryableFailure = failure;
           if (attempt < route.retry.max_attempts) {
             const wait = Math.min(backoff(route, attempt), budget.assertTime());
             if (wait > 0) await sleep(wait, undefined, { ref: false });
@@ -156,6 +158,9 @@ export function createAdvisoryRouter({ policy: policyValue, env = process.env, f
         }
       }
       if (routeFailedRetryably) breaker.recordFailure(route.route_id);
+    }
+    if (candidates.length === 1 && lastRetryableFailure) {
+      return blockedResult({ request, startedAt, clock, code: lastRetryableFailure.code, message: lastRetryableFailure.message, attempts, accounting: budget.snapshot(), rejected: selection.rejected });
     }
     return blockedResult({ request, startedAt, clock, code: 'ROUTES_EXHAUSTED', message: 'all qualified routes failed before a billable response', attempts, accounting: budget.snapshot(), rejected: selection.rejected });
   }
