@@ -1,6 +1,6 @@
 {
   "name": "@forgeai/foundation",
-  "version": "0.2.0-alpha.1",
+  "version": "0.3.0-alpha.1",
   "private": true,
   "description": "Fail-closed quality foundation and Claude Agent SDK control plane for verified software delivery.",
   "type": "module",
@@ -9,7 +9,8 @@
   },
   "bin": {
     "forgeai-foundation": "./bin/forgeai-foundation.mjs",
-    "forgeai-control-plane": "./bin/forgeai-control-plane.mjs"
+    "forgeai-control-plane": "./bin/forgeai-control-plane.mjs",
+    "forgeai-litellm-router": "./bin/forgeai-litellm-router.mjs"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -19,7 +20,8 @@
     "doctor": "node bin/forgeai-foundation.mjs doctor",
     "control-plane": "node bin/forgeai-control-plane.mjs",
     "sonar": "node scripts/sonar-gate.mjs",
-    "codeql": "node scripts/check-sarif.mjs codeql-results"
+    "codeql": "node scripts/check-sarif.mjs codeql-results",
+    "litellm-router": "node bin/forgeai-litellm-router.mjs"
   },
   "license": "UNLICENSED"
 }
