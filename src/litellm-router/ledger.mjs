@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open, readFile, stat } from 'node:fs/promises';
+import { lstat, mkdir, open } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { ROUTER_LEDGER_SCHEMA_VERSION, LITELLM_ROUTER_LIMITS } from './constants.mjs';
 import { canonicalJson } from './contracts.mjs';
@@ -15,6 +15,11 @@ function sanitize(value) {
   const out = {};
   for (const key of allowed) if (value[key] !== undefined) out[key] = value[key];
   return out;
+}
+
+function noFollowFlag() {
+  if (typeof fsConstants.O_NOFOLLOW !== 'number') throw new Error('O_NOFOLLOW is required for the router ledger');
+  return fsConstants.O_NOFOLLOW;
 }
 
 async function assertNoSymlink(path) {
@@ -40,56 +45,70 @@ async function assertNoSymlink(path) {
   return absolute;
 }
 
-async function previousHash(path) {
-  try {
-    const bytes = await readFile(path, 'utf8');
-    const lines = bytes.trim().split('\n').filter(Boolean);
-    if (lines.length === 0) return ZERO_HASH;
-    const last = JSON.parse(lines.at(-1));
-    return typeof last.event_hash === 'string' ? last.event_hash : ZERO_HASH;
-  } catch (error) {
-    if (error.code === 'ENOENT') return ZERO_HASH;
-    throw error;
+async function readSnapshot(handle, size) {
+  if (!Number.isSafeInteger(size) || size < 0 || size > LITELLM_ROUTER_LIMITS.max_ledger_bytes) throw new Error('router ledger exceeds the configured size limit');
+  if (size === 0) return '';
+  const buffer = Buffer.alloc(size);
+  let offset = 0;
+  while (offset < size) {
+    const { bytesRead } = await handle.read(buffer, offset, size - offset, offset);
+    if (bytesRead === 0) throw new Error('router ledger changed while being read');
+    offset += bytesRead;
   }
+  const after = await handle.stat();
+  if (!after.isFile() || after.size !== size) throw new Error('router ledger changed while being read');
+  return buffer.toString('utf8');
+}
+
+function previousHash(bytes) {
+  const lines = bytes.trim().split('\n').filter(Boolean);
+  if (lines.length === 0) return ZERO_HASH;
+  const last = JSON.parse(lines.at(-1));
+  return typeof last.event_hash === 'string' ? last.event_hash : ZERO_HASH;
 }
 
 async function append(path, event) {
   const absolute = await assertNoSymlink(path);
   await mkdir(dirname(absolute), { recursive: true, mode: 0o700 });
   await assertNoSymlink(absolute);
-  try {
-    const info = await stat(absolute);
-    if (info.size > LITELLM_ROUTER_LIMITS.max_ledger_bytes) throw new Error('router ledger exceeds the configured size limit');
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-  const prevHash = await previousHash(absolute);
-  const payload = { schema_version: ROUTER_LEDGER_SCHEMA_VERSION, ...sanitize(event), prev_hash: prevHash };
-  payload.event_hash = hash(canonicalJson(payload));
-  const flags = fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY | (fsConstants.O_NOFOLLOW ?? 0);
+  const flags = fsConstants.O_RDWR | fsConstants.O_APPEND | fsConstants.O_CREAT | noFollowFlag();
   const handle = await open(absolute, flags, 0o600);
   try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new Error('ledger path must be a regular file');
+    const bytes = await readSnapshot(handle, info.size);
+    const payload = { schema_version: ROUTER_LEDGER_SCHEMA_VERSION, ...sanitize(event), prev_hash: previousHash(bytes) };
+    payload.event_hash = hash(canonicalJson(payload));
     await handle.writeFile(`${JSON.stringify(payload)}\n`, 'utf8');
     await handle.sync();
+    return Object.freeze(payload);
   } finally {
     await handle.close();
   }
-  return Object.freeze(payload);
 }
 
 export async function appendRouterLedger(path, event) {
   if (typeof path !== 'string' || path.length === 0) return null;
   const key = resolve(path);
   const previous = queues.get(key) ?? Promise.resolve();
-  const current = previous.catch(() => {}).then(() => append(key, event));
-  const queued = current.finally(() => { if (queues.get(key) === queued) queues.delete(key); });
-  queues.set(key, queued);
+  const current = previous.then(() => append(key, event));
+  let tail;
+  tail = current.catch(() => {}).finally(() => { if (queues.get(key) === tail) queues.delete(key); });
+  queues.set(key, tail);
   return current;
 }
 
 export async function verifyRouterLedger(path) {
   const absolute = await assertNoSymlink(path);
-  const bytes = await readFile(absolute, 'utf8');
+  const handle = await open(absolute, fsConstants.O_RDONLY | noFollowFlag());
+  let bytes;
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new Error('ledger path must be a regular file');
+    bytes = await readSnapshot(handle, info.size);
+  } finally {
+    await handle.close();
+  }
   const lines = bytes.trim().split('\n').filter(Boolean);
   let prev = ZERO_HASH;
   for (let index = 0; index < lines.length; index += 1) {
