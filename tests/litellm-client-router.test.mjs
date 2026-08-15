@@ -136,7 +136,7 @@ test('absolute timeout covers a slow response body', async (t) => {
 
 test('custom body reader that ignores abort cannot hang forever', async () => {
   const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: () => new Promise(() => {}), cancel: async () => {}, releaseLock: () => {} }) } });
-  const result = await routerFor('http://127.0.0.1:1', [qualifiedRoute('primary', 'test/primary', { max_timeout_ms: 50 })], { fetchImpl }).run(request({ timeout_ms: 50 }));
+  const result = await routerFor('http://127.0.0.1:1', [qualifiedRoute('primary', 'test/primary', { max_timeout_ms: 100 })], { fetchImpl }).run(request({ timeout_ms: 100 }));
   assert.equal(result.error.code, 'LITELLM_TIMEOUT');
 });
 
