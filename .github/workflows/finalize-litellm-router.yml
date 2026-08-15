@@ -1,0 +1,157 @@
+name: finalize-litellm-router-0.3.0-alpha.1
+
+on:
+  push:
+    branches:
+      - forgeai/mcp-litellm-router-0.3.0-alpha.1
+
+permissions:
+  contents: write
+
+env:
+  PARENT_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
+  RELEASE_VERSION: 0.3.0-alpha.1
+  RELEASE_BRANCH: forgeai/mcp-litellm-router-0.3.0-alpha.1
+
+jobs:
+  finalize:
+    if: "${{ github.actor != 'github-actions[bot]' && startsWith(github.event.head_commit.message, 'chore: trigger CI on sealed LiteLLM router tree') == false }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout stacked router branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Verify branch ancestry and required files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "$RELEASE_BRANCH"
+          git merge-base --is-ancestor "$PARENT_SHA" HEAD
+          test -f src/litellm-router/router.mjs
+          test -f src/litellm-router/mcp-server.mjs
+          test -f bin/forgeai-litellm-router.mjs
+          test -f config/litellm-router-policy.json
+          test -f tests/litellm-client-router.test.mjs
+          test -f tests/litellm-mcp.test.mjs
+      - name: Update release metadata deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const version = process.env.RELEASE_VERSION;
+
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          pkg.version = version;
+          pkg.bin = { ...(pkg.bin ?? {}), 'forgeai-litellm-router': './bin/forgeai-litellm-router.mjs' };
+          pkg.scripts = { ...(pkg.scripts ?? {}), 'litellm-router': 'node bin/forgeai-litellm-router.mjs' };
+          writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
+
+          const sbomText = readFileSync('SBOM.spdx.json', 'utf8').replaceAll('0.2.0-alpha.1', version);
+          JSON.parse(sbomText);
+          writeFileSync('SBOM.spdx.json', sbomText.endsWith('\n') ? sbomText : `${sbomText}\n`);
+
+          const readmeHeading = '## MCP → LiteLLM read-only router 0.3.0-alpha.1';
+          let readme = readFileSync('README.md', 'utf8');
+          if (!readme.includes(readmeHeading)) {
+            const readmeSection = [
+              readmeHeading,
+              '',
+              'ForgeAI expose un routeur programmable strictement read-only pour `CONSULT`, `AUDIT`, `REVIEW` et `JUDGE`. Les modèles externes appelés via MCP→LiteLLM ne reçoivent aucun outil, filesystem, shell ou droit `EXECUTE`. Une route reste inutilisable sans qualification scellée et non expirée.',
+            ].join('\n');
+            readme = `${readme.trimEnd()}\n\n${readmeSection}\n`;
+          }
+          writeFileSync('README.md', readme);
+
+          const changelogHeading = '## 0.3.0-alpha.1 — 2026-08-14';
+          let changelog = readFileSync('CHANGELOG.md', 'utf8');
+          if (!changelog.includes(changelogHeading)) {
+            const entry = `${changelogHeading}\n\n- ajoute le routeur MCP→LiteLLM read-only pour CONSULT/AUDIT/REVIEW/JUDGE;\n- refuse toute route sans qualification scellée, non expirée et liée au harness;\n- borne contexte, sorties, tokens, coût, retries, fallback, timeout HTTP complet et circuit breaker;\n- interdit les tools externes et rend toute réponse 200 à comptabilité incertaine terminale;\n- ajoute un ledger hash-chaîné sans prompts, contexte, réponses brutes ni secrets;\n- impose le lifecycle MCP NEW → INITIALIZING → READY et la sémantique JSON-RPC des notifications;\n- conserve les quatre routes versionnées à UNQUALIFIED jusqu’aux benchmarks réels.\n\n`;
+            changelog = changelog.replace(/^# Changelog\s*\n/u, `# Changelog\n\n${entry}`);
+          }
+          writeFileSync('CHANGELOG.md', changelog);
+          NODE
+          node scripts/source-manifest.mjs
+          git add -A
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+      - name: Commit sealed router release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'feat: add MCP LiteLLM read-only router 0.3.0-alpha.1'
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run complete quality gates on clean commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/forgeai-router-evidence"
+          npm test | tee "$RUNNER_TEMP/forgeai-router-evidence/tests.log"
+          npm run lint | tee "$RUNNER_TEMP/forgeai-router-evidence/lint.log"
+          npm run verify | tee "$RUNNER_TEMP/forgeai-router-evidence/verify.log"
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Verify fail-closed versioned policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/forgeai-router-evidence"
+          set +e
+          node bin/forgeai-litellm-router.mjs doctor > "$evidence/doctor.json" 2> "$evidence/doctor.stderr"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const doctor = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/forgeai-router-evidence/doctor.json`, 'utf8'));
+          if (doctor.status !== 'BLOCKED' || doctor.ready_routes !== 0) throw new Error('versioned policy must remain fully unqualified');
+          if (!doctor.routes.every((route) => route.status === 'UNQUALIFIED' && route.ready === false)) throw new Error('a versioned route is unexpectedly ready');
+          NODE
+      - name: Seal release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/forgeai-router-evidence"
+          node --input-type=module - <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const run = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+          const report = {
+            schema_version: 'forgeai.litellm-router-release-evidence.v0.3.0-alpha.1',
+            head_sha: run('rev-parse', 'HEAD'),
+            tree_sha: run('rev-parse', 'HEAD^{tree}'),
+            parent_sha: process.env.PARENT_SHA,
+            branch: process.env.RELEASE_BRANCH,
+            policy_status: 'UNQUALIFIED',
+            execute_enabled: false,
+            manifest_sha256: createHash('sha256').update(readFileSync('SOURCE_MANIFEST.json')).digest('hex'),
+            node: process.version,
+            workflow_run_id: process.env.GITHUB_RUN_ID,
+          };
+          report.evidence_sha256 = createHash('sha256').update(JSON.stringify(report)).digest('hex');
+          writeFileSync(`${process.env.RUNNER_TEMP}/forgeai-router-evidence/release.json`, `${JSON.stringify(report, null, 2)}\n`);
+          NODE
+          sha256sum "$evidence"/* > "$evidence/SHA256SUMS.txt"
+          cat "$evidence/release.json"
+      - name: Push sealed release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
+          printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-litellm-router-finalization
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/forgeai-router-evidence

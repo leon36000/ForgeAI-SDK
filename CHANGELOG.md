@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-alpha.1 — 2026-08-14
+
+- ajoute le routeur MCP→LiteLLM read-only pour CONSULT/AUDIT/REVIEW/JUDGE;
+- refuse toute route sans qualification scellée, non expirée et liée au harness;
+- borne contexte, sorties, tokens, coût, retries, fallback, timeout HTTP complet et circuit breaker;
+- interdit les tools externes et rend toute réponse 200 à comptabilité incertaine terminale;
+- ajoute un ledger hash-chaîné sans prompts, contexte, réponses brutes ni secrets;
+- impose le lifecycle MCP NEW → INITIALIZING → READY et la sémantique JSON-RPC des notifications;
+- conserve les quatre routes versionnées à UNQUALIFIED jusqu’aux benchmarks réels.
+
 ## 0.2.0-alpha.1 — 2026-08-14
 
 - Ajoute un control plane programmable autour du Claude Agent SDK, sans modifier les verdicts Foundation.

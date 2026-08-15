@@ -1,0 +1,63 @@
+{
+  "schema_version": "forgeai.litellm-router-policy.v0.3.0-alpha.1",
+  "policy_id": "forgeai-external-advisory-default",
+  "endpoint_env": "FORGEAI_LITELLM_BASE_URL",
+  "api_key_env": "FORGEAI_LITELLM_API_KEY",
+  "routes": [
+    {
+      "route_id": "deepseek-v4-pro",
+      "model": "forgeai/deepseek-v4-pro",
+      "status": "UNQUALIFIED",
+      "modes": ["CONSULT", "AUDIT", "REVIEW", "JUDGE"],
+      "capabilities": ["architecture", "code-audit", "code-review", "debug-analysis", "evidence-judge"],
+      "qualification": null,
+      "limits": { "max_output_tokens": 8192, "max_total_tokens": 131072, "max_cost_usd": 5, "max_timeout_ms": 180000 },
+      "pricing": null,
+      "retry": { "max_attempts": 2, "backoff_ms": 1000 },
+      "circuit_breaker": { "failure_threshold": 3, "cooldown_ms": 60000 }
+    },
+    {
+      "route_id": "grok",
+      "model": "forgeai/grok",
+      "status": "UNQUALIFIED",
+      "modes": ["CONSULT", "AUDIT", "REVIEW", "JUDGE"],
+      "capabilities": ["architecture", "code-audit", "code-review", "debug-analysis", "evidence-judge"],
+      "qualification": null,
+      "limits": { "max_output_tokens": 8192, "max_total_tokens": 131072, "max_cost_usd": 5, "max_timeout_ms": 180000 },
+      "pricing": null,
+      "retry": { "max_attempts": 2, "backoff_ms": 1000 },
+      "circuit_breaker": { "failure_threshold": 3, "cooldown_ms": 60000 }
+    },
+    {
+      "route_id": "glm-5.2",
+      "model": "forgeai/glm-5.2",
+      "status": "UNQUALIFIED",
+      "modes": ["CONSULT", "AUDIT", "REVIEW", "JUDGE"],
+      "capabilities": ["architecture", "code-audit", "code-review", "debug-analysis", "evidence-judge"],
+      "qualification": null,
+      "limits": { "max_output_tokens": 8192, "max_total_tokens": 131072, "max_cost_usd": 5, "max_timeout_ms": 180000 },
+      "pricing": null,
+      "retry": { "max_attempts": 2, "backoff_ms": 1000 },
+      "circuit_breaker": { "failure_threshold": 3, "cooldown_ms": 60000 }
+    },
+    {
+      "route_id": "muse-spark-1.2",
+      "model": "forgeai/muse-spark-1.2",
+      "status": "UNQUALIFIED",
+      "modes": ["CONSULT", "AUDIT", "REVIEW", "JUDGE"],
+      "capabilities": ["architecture", "code-audit", "code-review", "debug-analysis", "evidence-judge"],
+      "qualification": null,
+      "limits": { "max_output_tokens": 8192, "max_total_tokens": 131072, "max_cost_usd": 5, "max_timeout_ms": 180000 },
+      "pricing": null,
+      "retry": { "max_attempts": 2, "backoff_ms": 1000 },
+      "circuit_breaker": { "failure_threshold": 3, "cooldown_ms": 60000 }
+    }
+  ],
+  "capability_routes": {
+    "architecture": ["deepseek-v4-pro", "grok", "glm-5.2", "muse-spark-1.2"],
+    "code-audit": ["deepseek-v4-pro", "grok", "glm-5.2", "muse-spark-1.2"],
+    "code-review": ["deepseek-v4-pro", "grok", "glm-5.2", "muse-spark-1.2"],
+    "debug-analysis": ["deepseek-v4-pro", "grok", "glm-5.2", "muse-spark-1.2"],
+    "evidence-judge": ["deepseek-v4-pro", "grok", "glm-5.2", "muse-spark-1.2"]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "forgeai.advisory-request.v0.3.0-alpha.1",
+  "request_id": "review-example-001",
+  "mode": "REVIEW",
+  "capability": "code-review",
+  "objective": "Review the supplied diff for correctness, security, regressions, and missing tests.",
+  "context": [
+    {
+      "id": "diff-001",
+      "kind": "diff",
+      "path": "src/example.mjs",
+      "content": "+export const value = 1;\n"
+    }
+  ],
+  "max_output_tokens": 2048,
+  "max_total_tokens": 12000,
+  "max_cost_usd": 0.25,
+  "timeout_ms": 60000,
+  "allow_fallback": false,
+  "metadata": { "source": "example" }
+}

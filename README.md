@@ -74,3 +74,7 @@ La première commande est un dry-run. L’installeur refuse les symlinks ou type
 - `main` ne doit jamais être fusionné automatiquement par le système.
 
 Voir `docs/CLAUDE_AGENT_CONTROL_PLANE.md` pour les contrats et le modèle de menace de cette tranche.
+
+## MCP → LiteLLM read-only router 0.3.0-alpha.1
+
+ForgeAI expose un routeur programmable strictement read-only pour `CONSULT`, `AUDIT`, `REVIEW` et `JUDGE`. Les modèles externes appelés via MCP→LiteLLM ne reçoivent aucun outil, filesystem, shell ou droit `EXECUTE`. Une route reste inutilisable sans qualification scellée et non expirée.

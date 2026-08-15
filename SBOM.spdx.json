@@ -2,8 +2,8 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ForgeAI-SDK-Control-Plane-0.2.0-alpha.1",
-  "documentNamespace": "https://forgeai.local/spdx/control-plane-0.2.0-alpha.1-2026-08-14",
+  "name": "ForgeAI-SDK-Control-Plane-0.3.0-alpha.1",
+  "documentNamespace": "https://forgeai.local/spdx/control-plane-0.3.0-alpha.1-2026-08-14",
   "creationInfo": {
     "created": "2026-08-14T00:00:00Z",
     "creators": [
@@ -14,7 +14,7 @@
     {
       "name": "@forgeai/foundation",
       "SPDXID": "SPDXRef-Package-ForgeAI",
-      "versionInfo": "0.2.0-alpha.1",
+      "versionInfo": "0.3.0-alpha.1",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgeai.local/schemas/advisory-result-v0.3.0-alpha.1.schema.json",
+  "title": "ForgeAI advisory result 0.3.0-alpha.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "summary", "findings", "recommendations", "confidence"],
+  "properties": {
+    "schema_version": { "const": "forgeai.advisory-result.v0.3.0-alpha.1" },
+    "status": { "enum": ["PASS", "FINDINGS", "NEEDS_CONTEXT", "BLOCKED"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 8192 },
+    "findings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "title", "evidence", "recommendation"],
+        "properties": {
+          "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+          "code": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "evidence": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "recommendation": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "path": { "type": "string", "maxLength": 1024 },
+          "line": { "type": "integer", "minimum": 1, "maximum": 10000000 }
+        }
+      }
+    },
+    "recommendations": { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
