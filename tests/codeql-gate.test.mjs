@@ -25,7 +25,7 @@ test('CodeQL gate fails closed on a result without automationDetails', async () 
     }],
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /js\/file-system-race/u);
+  assert.match(result.stderr, /CodeQL BLOCKED: 1 SARIF result/u);
 });
 
 test('CodeQL gate passes when every SARIF run has zero results', async () => {
@@ -34,7 +34,5 @@ test('CodeQL gate passes when every SARIF run has zero results', async () => {
     runs: [{ tool: { driver: { name: 'CodeQL', rules: [] } }, results: [] }],
   });
   assert.equal(result.status, 0, result.stderr);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, 'PASS');
-  assert.equal(payload.results, 0);
+  assert.match(result.stdout, /CodeQL PASS .*0 results/u);
 });
