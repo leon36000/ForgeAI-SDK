@@ -16,7 +16,7 @@ env:
 
 jobs:
   finalize:
-    if: ${{ github.actor != 'github-actions[bot]' && !startsWith(github.event.head_commit.message, 'chore: trigger CI on sealed LiteLLM router tree') }}
+    if: ${{ github.actor != 'github-actions[bot]' && startsWith(github.event.head_commit.message, 'chore: trigger CI on sealed LiteLLM router tree') == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
