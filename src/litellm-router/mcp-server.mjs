@@ -80,7 +80,7 @@ export function createMcpServer({ router, input = process.stdin, output = proces
     if (Buffer.byteLength(line) > MAX_LINE_BYTES) { send(rpcError(null, -32700, 'Message too large')); return; }
     let message;
     try { message = JSON.parse(line); } catch { send(rpcError(null, -32700, 'Parse error')); return; }
-    Promise.resolve(handle(message)).catch(() => send(rpcError(hasId(message) ? message.id : null, -32603, 'Internal error'));
+    Promise.resolve(handle(message)).catch(() => send(rpcError(hasId(message) ? message.id : null, -32603, 'Internal error')));
   });
   lines.on('close', () => { closed = true; });
   return Object.freeze({ get state() { return state; }, close() { closed = true; lines.close(); } });
