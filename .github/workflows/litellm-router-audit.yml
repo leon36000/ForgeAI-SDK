@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 3fdf58d436c0b17308ff7684a36b30dad0f22645
-  RELEASE_TREE: e3d50c511a7ab1f0c74115a2e3f8866499f5a61e
+  RELEASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+  RELEASE_TREE: f85dc5a2883dd954b47cf1d51ea3f70008c53d42
   BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
   FALLOW_VERSION: '3.10.0'
 
@@ -109,7 +109,7 @@ jobs:
       - name: Upload Fallow evidence
         uses: actions/upload-artifact@v7
         with:
-          name: forgeai-litellm-router-fallow-3fdf58d4
+          name: forgeai-litellm-router-fallow-ba18c9d8
           retention-days: 14
           if-no-files-found: error
           path: fallow-evidence
