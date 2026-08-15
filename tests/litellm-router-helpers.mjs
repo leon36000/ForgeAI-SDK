@@ -24,7 +24,7 @@ export function qualifiedRoute(routeId, model, overrides = {}) {
       max_cost_usd: overrides.max_cost_usd ?? 1,
       max_timeout_ms: overrides.max_timeout_ms ?? 5000,
     },
-    pricing: overrides.pricing ?? { input_per_million_usd: 1, output_per_million_usd: 2 },
+    pricing: Object.hasOwn(overrides, 'pricing') ? overrides.pricing : { input_per_million_usd: 1, output_per_million_usd: 2 },
     retry: { max_attempts: overrides.max_attempts ?? 1, backoff_ms: overrides.backoff_ms ?? 0 },
     circuit_breaker: { failure_threshold: overrides.failure_threshold ?? 2, cooldown_ms: overrides.cooldown_ms ?? 1000 },
   };
