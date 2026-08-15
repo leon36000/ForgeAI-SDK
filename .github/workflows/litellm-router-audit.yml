@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 1c4693241b605a2888e390ece967e3d4dba5fef9
-  RELEASE_TREE: a9cbc2b12c5b9146eeeb64ed4141fd925093a6ee
+  RELEASE_SHA: 3fdf58d436c0b17308ff7684a36b30dad0f22645
+  RELEASE_TREE: e3d50c511a7ab1f0c74115a2e3f8866499f5a61e
   BASE_SHA: 6ac83d0707cda99dc069000bb4cec79caad4f6a3
   FALLOW_VERSION: '3.10.0'
 
@@ -109,9 +109,7 @@ jobs:
       - name: Upload Fallow evidence
         uses: actions/upload-artifact@v7
         with:
-          name: forgeai-litellm-router-fallow-1c469324
+          name: forgeai-litellm-router-fallow-3fdf58d4
           retention-days: 14
           if-no-files-found: error
           path: fallow-evidence
-
-# Second push intentionally triggers this exact-HEAD audit workflow.
