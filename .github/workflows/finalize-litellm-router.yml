@@ -60,7 +60,12 @@ jobs:
           const readmeHeading = '## MCP → LiteLLM read-only router 0.3.0-alpha.1';
           let readme = readFileSync('README.md', 'utf8');
           if (!readme.includes(readmeHeading)) {
-            readme = `${readme.trimEnd()}\n\n${readmeHeading}\n\nForgeAI expose un routeur programmable strictement read-only pour \\`CONSULT\\`, \\`AUDIT\\`, \\`REVIEW\\` et \\`JUDGE\\`. Les modèles externes appelés via MCP→LiteLLM ne reçoivent aucun outil, filesystem, shell ou droit \\`EXECUTE\\`. Une route reste inutilisable sans qualification scellée et non expirée.\n`;
+            const readmeSection = [
+              readmeHeading,
+              '',
+              'ForgeAI expose un routeur programmable strictement read-only pour `CONSULT`, `AUDIT`, `REVIEW` et `JUDGE`. Les modèles externes appelés via MCP→LiteLLM ne reçoivent aucun outil, filesystem, shell ou droit `EXECUTE`. Une route reste inutilisable sans qualification scellée et non expirée.',
+            ].join('\n');
+            readme = `${readme.trimEnd()}\n\n${readmeSection}\n`;
           }
           writeFileSync('README.md', readme);
 
@@ -115,9 +120,6 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/forgeai-router-evidence"
-          head_sha="$(git rev-parse HEAD)"
-          tree_sha="$(git rev-parse HEAD^{tree})"
-          manifest_sha="$(sha256sum SOURCE_MANIFEST.json | cut -d' ' -f1)"
           node --input-type=module - <<'NODE'
           import { createHash } from 'node:crypto';
           import { readFileSync, writeFileSync } from 'node:fs';
