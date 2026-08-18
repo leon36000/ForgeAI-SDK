@@ -1,0 +1,43 @@
+name: router-maint-source-export
+
+on:
+  push:
+    branches:
+      - forgeai/router-maint-source-export
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+  RELEASE_TREE: f85dc5a2883dd954b47cf1d51ea3f70008c53d42
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 1
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+      - name: Archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf "$RUNNER_TEMP/forgeai-router-$RELEASE_SHA.tar.gz" .
+          sha256sum "$RUNNER_TEMP/forgeai-router-$RELEASE_SHA.tar.gz" > "$RUNNER_TEMP/forgeai-router-$RELEASE_SHA.tar.gz.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-router-source-ba18c9d8
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/forgeai-router-${{ env.RELEASE_SHA }}.tar.gz
+            ${{ runner.temp }}/forgeai-router-${{ env.RELEASE_SHA }}.tar.gz.sha256
