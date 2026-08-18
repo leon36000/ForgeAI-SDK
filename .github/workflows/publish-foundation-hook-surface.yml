@@ -30,13 +30,19 @@ jobs:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
           path: release
-      - name: Decode and verify sealed patch
+      - name: Reassemble and verify sealed patch
         shell: bash
         run: |
           set -euo pipefail
-          payload='transport/.forgeai-release/foundation-hook-surface/patch.gz.b64'
-          test "$(wc -c < "$payload")" -eq "$PATCH_B64_BYTES"
-          base64 --decode "$payload" > "$RUNNER_TEMP/foundation-hook-surface.patch.gz"
+          root='transport/.forgeai-release/foundation-hook-surface/chunks'
+          printf '%s  %s\n' 'eea064d4e01e36429bf7f6c70164bcbc0e9b536b3438db97bf52de1986239838' "$root/chunk-00.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '524a82b3e8adb0798d65dcdb1e2a4c24f6c9e3840766b3ee3de8f150f4e32334' "$root/chunk-01.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'd079a45e78606b2b35e70f80e63e0b376c980e308112061f04ef294e9f5d58f0' "$root/chunk-02.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'a78771bc4940dff3490d611b32b99420b1eaf7e6deabbf96b61c2e2d54322049' "$root/chunk-03.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '3532afbbf69ee77b7388b46f8e84611f4eb45b1262ce1eacfe3036f2cc621128' "$root/chunk-04.txt" | sha256sum --check --strict
+          cat "$root"/chunk-0{0,1,2,3,4}.txt > "$RUNNER_TEMP/foundation-hook-surface.patch.gz.b64"
+          test "$(wc -c < "$RUNNER_TEMP/foundation-hook-surface.patch.gz.b64")" -eq "$PATCH_B64_BYTES"
+          base64 --decode "$RUNNER_TEMP/foundation-hook-surface.patch.gz.b64" > "$RUNNER_TEMP/foundation-hook-surface.patch.gz"
           printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-hook-surface.patch.gz" | sha256sum --check --strict
           gzip --test "$RUNNER_TEMP/foundation-hook-surface.patch.gz"
       - name: Refuse a moved Foundation branch
