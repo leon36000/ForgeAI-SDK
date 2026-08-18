@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - forgeai/router-maint-finalize-0.3.0-alpha.1
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -77,5 +80,3 @@ jobs:
           set -euo pipefail
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
-
-# Trigger second bounded refactor finalization.
