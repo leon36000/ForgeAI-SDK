@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFile, symlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tempWorkspace } from './helpers.mjs';
+const cli=new URL('../bin/forgeai-foundation.mjs',import.meta.url).pathname;
+test('CLI help succeeds',()=>assert.equal(spawnSync(process.execPath,[cli,'--help'],{encoding:'utf8'}).status,0));
+test('CLI unknown command fails',()=>assert.notEqual(spawnSync(process.execPath,[cli,'unknown'],{encoding:'utf8'}).status,0));
+test('CLI hook stdin is bounded',()=>{const input='x'.repeat(8*1024*1024+1);const r=spawnSync(process.execPath,[cli,'hook','Unknown'],{input,encoding:'utf8',maxBuffer:10*1024*1024});assert.notEqual(r.status,0);assert.match(r.stderr,/stdin exceeds maximum/u);});
+test('CLI atomic JSON output replaces a symlink without modifying its target',async()=>{
+  const w=await tempWorkspace('cli-');
+  const out=join(w,'slots.json');
+  const outside=join(w,'outside');
+  await writeFile(outside,'outside');
+  await symlink(outside,out);
+  const r=spawnSync(process.execPath,[cli,'benchmark-init',out],{encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);
+  assert.equal(await readFile(outside,'utf8'),'outside');
+  assert.equal(JSON.parse(await readFile(out,'utf8')).length,15);
+});

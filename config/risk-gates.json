@@ -1,0 +1,36 @@
+{
+  "schema_version": "forgeai.gates.v0.1.1",
+  "common": [
+    "contract",
+    "ledger",
+    "git-clean",
+    "git-scope",
+    "required-tests",
+    "acceptance",
+    "artifact-manifest"
+  ],
+  "R0": [],
+  "R1": [
+    "fresh-review"
+  ],
+  "R2": [
+    "fresh-review",
+    "security-review",
+    "security-gate",
+    "integration-gate",
+    "codeql-gate"
+  ],
+  "R3": [
+    "fresh-review",
+    "security-review",
+    "security-gate",
+    "integration-gate",
+    "human-approval",
+    "codeql-gate"
+  ],
+  "task_overrides": {
+    "bugfix": [
+      "regression-test"
+    ]
+  }
+}

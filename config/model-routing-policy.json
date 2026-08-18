@@ -1,0 +1,13 @@
+{
+  "schema_version": "forgeai.model-routing.v0.1.1",
+  "policy": "Models are qualified per role+harness+task class using cost per verified success. No provider/model is trusted by name alone.",
+  "defaults": {
+    "orchestrator": "most-capable-qualified-Claude",
+    "writer": "least-cost-qualified",
+    "reviewer": "independent-qualified",
+    "security": "security-qualified",
+    "verifier": "deterministic-first"
+  },
+  "qualification_required": true,
+  "automatic_fallback_to_unqualified_model": false
+}
