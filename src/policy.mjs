@@ -6,7 +6,7 @@ import { normalizedTaskEnvelope } from './contracts.mjs';
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS']);
-const SESSION_CONTROL_TOOLS = new Set(['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TodoWrite', 'ToolSearch']);
+const SESSION_CONTROL_TOOLS = new Set(['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'ListAgents', 'ReportFindings', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'TodoWrite', 'ToolSearch', 'WaitForMcpServers']);
 const PROTECTED_PATHS = Object.freeze([
   '.git/**', '.forgeai/**', '.claude/settings.json', '.claude/settings.local.json', '.claude/agents/**', '.claude/hooks/**',
   '.env', '.env.*', '**/.env', '**/.env.*', '**/*.pem', '**/*.key', '**/id_rsa', '**/id_rsa.*',

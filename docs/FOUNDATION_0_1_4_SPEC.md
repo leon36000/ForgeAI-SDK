@@ -31,3 +31,6 @@ Un EvidenceBundle est borné à 8 MiB. Les collections ont des maxima explicites
 ## Release
 
 La release exige manifeste exact dans les deux sens, lint, audit sécurité, tests, doctor, exemple valide et arbre Git propre. CodeQL produit du SARIF; zéro résultat est exigé. SonarQube devient fail-closed uniquement lorsqu’il est activé comme requis.
+### Current Claude Code control tools
+
+The catch-all hook must not make the orchestrator unusably strict. `ListAgents`, `ReportFindings`, `Skill`, `TaskOutput`, `TaskStop`, and `WaitForMcpServers` are treated as bounded control/read-only primitives and may pass to Claude Code permissions. `Workflow`, `SendMessage`, `Artifact`, cron mutations, worktree transitions, remote triggers, user-file egress, team management, and other unmodeled effectful tools remain fail-closed until explicitly qualified.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { checkCommand, checkNetwork, checkPath, checkToolUse } from '../src/policy.mjs';
 import { sampleTask, tempWorkspace } from './helpers.mjs';
@@ -156,6 +156,27 @@ test('session-control tools with no repository or network side effect remain ava
   for (const tool of ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TodoWrite', 'ToolSearch']) {
     assert.equal(checkToolUse(task, tool, {}).allowed, true, `${tool} should remain available`);
   }
+});
+
+test('current read-only and session-control tools remain available without widening system side effects', async () => {
+  const workspace=await tempWorkspace();
+  try {
+    for (const tool of ['ListAgents', 'ReportFindings', 'Skill', 'TaskOutput', 'TaskStop', 'WaitForMcpServers']) {
+      const result=checkToolUse(sampleTask(workspace),tool,{});
+      assert.equal(result.allowed,true,`${tool} should remain available as a bounded control/read-only tool`);
+    }
+  } finally { await rm(workspace,{recursive:true,force:true}); }
+});
+
+test('current tools with orchestration, publication, scheduling, worktree, or cross-session effects stay fail closed until modeled', async () => {
+  const workspace=await tempWorkspace();
+  try {
+    for (const tool of ['Artifact','CronCreate','CronDelete','EnterWorktree','PushNotification','RemoteTrigger','ScheduleWakeup','SendMessage','SendUserFile','ShareOnboardingGuide','TeamCreate','TeamDelete','Workflow']) {
+      const result=checkToolUse(sampleTask(workspace),tool,{});
+      assert.equal(result.allowed,false,`${tool} must remain fail closed`);
+      assert.equal(result.code,'TOOL_NOT_DECLARED');
+    }
+  } finally { await rm(workspace,{recursive:true,force:true}); }
 });
 
 test('writer cannot delegate through Agent', async () => {

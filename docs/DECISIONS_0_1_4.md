@@ -14,3 +14,7 @@
 - **Acceptée**: `Agent` est autorisé uniquement au thread principal portant un TaskEnvelope `orchestrator`; tout appel depuis un subagent, un autre rôle ou un mode de permissions bypass est bloqué.
 - **PENDING**: smoke tests live avec la version exacte de Claude Code.
 - **PENDING**: review indépendante humaine ou système distinct qualifié sur le HEAD final.
+
+### Hook-surface refinement — 2026-08-18
+
+The exhaustive `PreToolUse` policy distinguishes bounded control/read-only primitives from effectful unmodeled tools. `ListAgents`, `ReportFindings`, `Skill`, `TaskOutput`, `TaskStop`, and `WaitForMcpServers` are explicitly allowed to preserve current Claude Code orchestration. `Workflow`, cross-session messaging, publication/egress, cron mutation, worktree transitions, team controls, and other unqualified surfaces remain fail-closed.

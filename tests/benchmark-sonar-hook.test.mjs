@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { rm, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createBenchmarkSlots, computeBenchmarkMetrics } from '../src/benchmark.mjs';
 import { parseReportTask, waitForSonarQualityGate } from '../src/sonar.mjs';
@@ -33,6 +33,19 @@ test('PreToolUse hook allows declared command', async () => {
 });
 test('PreToolUse hook blocks undeclared command with exit 2', async () => {
   const workspace=await tempWorkspace(); const task=sampleTask(workspace); const taskPath=join(workspace,'task.json'); await writeFile(taskPath,JSON.stringify(task)); const previous=process.env.FORGEAI_TASK_ENVELOPE; process.env.FORGEAI_TASK_ENVELOPE=taskPath; try { const result=await handleHook('PreToolUse',{tool_name:'Bash',tool_input:{command:'npm run evil'}}); assert.equal(result.allow,false); assert.equal(result.exitCode,2); } finally { if(previous===undefined) delete process.env.FORGEAI_TASK_ENVELOPE; else process.env.FORGEAI_TASK_ENVELOPE=previous; }
+});
+
+test('PreToolUse hook keeps current bounded session-control tools available', async () => {
+  const workspace=await tempWorkspace(); await writeFile(join(workspace,'README.md'),'x'); const envelope=sampleTask(workspace,{role:'orchestrator',mode:'CONSULT'});
+  const taskPath=join(workspace,'task.json'); await writeFile(taskPath,JSON.stringify(envelope));
+  const old=process.env.FORGEAI_TASK_ENVELOPE; process.env.FORGEAI_TASK_ENVELOPE=taskPath;
+  try {
+    for (const tool of ['ListAgents','ReportFindings','Skill','TaskOutput','TaskStop','WaitForMcpServers']) {
+      const result=await handleHook('PreToolUse',{tool_name:tool,tool_input:{},permission_mode:'default'});
+      assert.equal(result.allow,true,`${tool} should pass through the hook`);
+      assert.equal(result.exitCode,0);
+    }
+  } finally { if(old===undefined)delete process.env.FORGEAI_TASK_ENVELOPE;else process.env.FORGEAI_TASK_ENVELOPE=old; await rm(workspace,{recursive:true,force:true}); }
 });
 
 test('PreToolUse hook allows main-thread orchestrator Agent delegation', async () => {

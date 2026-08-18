@@ -40,3 +40,4 @@
 - SonarQube fail-closed lorsqu’activé;
 - schéma Neon optionnel;
 - suite de tests adversariaux et vérification de publication.
+- Current bounded Claude Code control/read-only tools are explicitly allowlisted while higher-effect tools remain fail-closed.
