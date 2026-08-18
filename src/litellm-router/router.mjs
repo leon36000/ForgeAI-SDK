@@ -92,23 +92,27 @@ async function executeAttempt({ client, endpoint, apiKey, request, route, limits
   return { kind: 'success', response, cost, accounting, result };
 }
 
+function accountBilledResponse({ error, route, budget, billedUsage, billedCost }) {
+  if (error?.responseReceived !== true || billedCost === null) return error;
+  try {
+    if (billedCost > route.limits.max_cost_usd + Number.EPSILON) throw new RouterBudgetError('ROUTE_COST_LIMIT_EXCEEDED', 'billed response exceeded the qualified route cost limit', { cost_usd: billedCost, limit: route.limits.max_cost_usd });
+    if (billedUsage && billedUsage.total_tokens > route.limits.max_total_tokens) throw new RouterBudgetError('ROUTE_TOKEN_LIMIT_EXCEEDED', 'billed response exceeded the qualified route token limit', { usage: billedUsage, limit: route.limits.max_total_tokens });
+    budget.record({ costUsd: billedCost, totalTokens: billedUsage?.total_tokens ?? 0 });
+    return error;
+  } catch (budgetError) {
+    return budgetError;
+  }
+}
+
+function isTerminalAttemptError(error) {
+  return error instanceof RouterBudgetError || error?.responseReceived === true || error?.terminal === true || error?.retryable !== true;
+}
+
 function classifyAttempt({ error, route, budget }) {
-  let effectiveError = error;
-  let failure = safeError(error);
   const billedUsage = error?.details?.usage ?? null;
   const billedCost = deriveResponseCost({ usage: billedUsage, responseCost: error?.details?.response_cost_usd ?? null, pricing: route.pricing });
-  if (error?.responseReceived === true && billedCost !== null) {
-    try {
-      if (billedCost > route.limits.max_cost_usd + Number.EPSILON) throw new RouterBudgetError('ROUTE_COST_LIMIT_EXCEEDED', 'billed response exceeded the qualified route cost limit', { cost_usd: billedCost, limit: route.limits.max_cost_usd });
-      if (billedUsage && billedUsage.total_tokens > route.limits.max_total_tokens) throw new RouterBudgetError('ROUTE_TOKEN_LIMIT_EXCEEDED', 'billed response exceeded the qualified route token limit', { usage: billedUsage, limit: route.limits.max_total_tokens });
-      budget.record({ costUsd: billedCost, totalTokens: billedUsage?.total_tokens ?? 0 });
-    } catch (budgetError) {
-      effectiveError = budgetError;
-      failure = safeError(budgetError);
-    }
-  }
-  const terminal = effectiveError instanceof RouterBudgetError || effectiveError?.responseReceived === true || effectiveError?.terminal === true || effectiveError?.retryable !== true;
-  return { error: effectiveError, failure, billedUsage, billedCost, terminal };
+  const effectiveError = accountBilledResponse({ error, route, budget, billedUsage, billedCost });
+  return { error: effectiveError, failure: safeError(effectiveError), billedUsage, billedCost, terminal: isTerminalAttemptError(effectiveError) };
 }
 
 async function recordAttempt({ attempts, ledgerPath, request, requestHash, route, attempt, status, errorCode = null, startedAt, clock, usage = null, cost = null, prompts }) {
@@ -141,6 +145,43 @@ async function recordAttempt({ attempts, ledgerPath, request, requestHash, route
     qualification_evidence_sha256: route.qualification.evidence_sha256,
     prompt_sha256: prompts.prompt_sha256,
   });
+}
+
+async function runRouteAttempt({ client, prepared, route, limits, breaker, plan, attempt, ledgerPath, clock, sleep }) {
+  let remaining;
+  try { remaining = plan.budget.assertTime(); }
+  catch (error) { return { kind: 'blocked', outcome: blocked(error.code, error.message, error.details) }; }
+  const attemptStarted = iso(clock);
+  try {
+    const result = await executeAttempt({ client, endpoint: prepared.endpoint, apiKey: prepared.apiKey, request: prepared.request, route, limits, remaining, budget: plan.budget, breaker, prompts: plan.prompts });
+    if (result.kind === 'budget-blocked') {
+      await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: 'BLOCKED', errorCode: result.error.code, startedAt: attemptStarted, clock, usage: result.response.usage, cost: result.cost, prompts: plan.prompts });
+      return { kind: 'blocked', outcome: blocked(result.error.code, result.error.message, result.error.details) };
+    }
+    await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: result.result.status, startedAt: attemptStarted, clock, usage: result.response.usage, cost: result.cost, prompts: plan.prompts });
+    return { kind: 'success', outcome: { kind: 'success', route, result: result.result, accounting: result.accounting } };
+  } catch (error) {
+    const classified = classifyAttempt({ error, route, budget: plan.budget });
+    await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: 'BLOCKED', errorCode: classified.failure.code, startedAt: attemptStarted, clock, usage: classified.billedUsage, cost: classified.billedCost, prompts: plan.prompts });
+    if (classified.terminal) return { kind: 'blocked', outcome: blocked(classified.failure.code, classified.failure.message) };
+    if (attempt < route.retry.max_attempts) {
+      const wait = Math.min(backoff(route, attempt), plan.budget.assertTime());
+      if (wait > 0) await sleep(wait, undefined, { ref: false });
+    }
+    return { kind: 'retry', failure: classified.failure };
+  }
+}
+
+async function runCandidateRoute({ client, prepared, route, breakers, plan, ledgerPath, clock, sleep }) {
+  const breaker = breakers.get(route.route_id);
+  const limits = effectiveRouteLimits(prepared.request, route);
+  for (let attempt = 1; attempt <= route.retry.max_attempts; attempt += 1) {
+    const result = await runRouteAttempt({ client, prepared, route, limits, breaker, plan, attempt, ledgerPath, clock, sleep });
+    if (result.kind !== 'retry') return result;
+    plan.lastRetryableFailure = result.failure;
+  }
+  breaker.recordFailure(route.route_id);
+  return { kind: 'retry-exhausted' };
 }
 
 function finalizeResult({ request, startedAt, clock, selection = null, attempts = [], budget = null, outcome }) {
@@ -197,31 +238,8 @@ export function createAdvisoryRouter({ policy: policyValue, env = process.env, f
     if (selected.outcome) return finalizeResult({ ...prepared, ...selected, clock, outcome: selected.outcome });
     const plan = createAttemptPlan({ request: prepared.request, clock });
     for (const route of selected.candidates) {
-      const breaker = breakers.get(route.route_id);
-      const limits = effectiveRouteLimits(prepared.request, route);
-      let routeFailedRetryably = false;
-      for (let attempt = 1; attempt <= route.retry.max_attempts; attempt += 1) {
-        let remaining;
-        try { remaining = plan.budget.assertTime(); } catch (error) { return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, budget: plan.budget, outcome: blocked(error.code, error.message, error.details) }); }
-        const attemptStarted = iso(clock);
-        try {
-          const outcome = await executeAttempt({ client, endpoint: prepared.endpoint, apiKey: prepared.apiKey, request: prepared.request, route, limits, remaining, budget: plan.budget, breaker, prompts: plan.prompts });
-          if (outcome.kind === 'budget-blocked') {
-            await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: 'BLOCKED', errorCode: outcome.error.code, startedAt: attemptStarted, clock, usage: outcome.response.usage, cost: outcome.cost, prompts: plan.prompts });
-            return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, budget: plan.budget, outcome: blocked(outcome.error.code, outcome.error.message, outcome.error.details) });
-          }
-          await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: outcome.result.status, startedAt: attemptStarted, clock, usage: outcome.response.usage, cost: outcome.cost, prompts: plan.prompts });
-          return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, outcome: { kind: 'success', route, result: outcome.result, accounting: outcome.accounting } });
-        } catch (error) {
-          const classified = classifyAttempt({ error, route, budget: plan.budget });
-          await recordAttempt({ attempts: plan.attempts, ledgerPath, request: prepared.request, requestHash: prepared.requestHash, route, attempt, status: 'BLOCKED', errorCode: classified.failure.code, startedAt: attemptStarted, clock, usage: classified.billedUsage, cost: classified.billedCost, prompts: plan.prompts });
-          if (classified.terminal) return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, budget: plan.budget, outcome: blocked(classified.failure.code, classified.failure.message) });
-          routeFailedRetryably = true;
-          plan.lastRetryableFailure = classified.failure;
-          if (attempt < route.retry.max_attempts) { const wait = Math.min(backoff(route, attempt), plan.budget.assertTime()); if (wait > 0) await sleep(wait, undefined, { ref: false }); }
-        }
-      }
-      if (routeFailedRetryably) breaker.recordFailure(route.route_id);
+      const result = await runCandidateRoute({ client, prepared, route, breakers, plan, ledgerPath, clock, sleep });
+      if (result.kind !== 'retry-exhausted') return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, budget: plan.budget, outcome: result.outcome });
     }
     const exhausted = selected.candidates.length === 1 && plan.lastRetryableFailure ? plan.lastRetryableFailure : { code: 'ROUTES_EXHAUSTED', message: 'all qualified routes failed before a billable response' };
     return finalizeResult({ ...prepared, ...selected, clock, attempts: plan.attempts, budget: plan.budget, outcome: blocked(exhausted.code, exhausted.message) });
