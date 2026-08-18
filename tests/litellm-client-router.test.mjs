@@ -180,6 +180,8 @@ test('router run delegates orchestration through bounded private helpers', async
     'selectQualifiedRoutes',
     'createAttemptPlan',
     'executeAttempt',
+    'validateBilledRouteLimits',
+    'recordBilledAccounting',
     'accountBilledResponse',
     'classifyAttempt',
     'recordAttempt',

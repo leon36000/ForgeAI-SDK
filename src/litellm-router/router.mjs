@@ -92,12 +92,20 @@ async function executeAttempt({ client, endpoint, apiKey, request, route, limits
   return { kind: 'success', response, cost, accounting, result };
 }
 
+function validateBilledRouteLimits({ route, billedUsage, billedCost }) {
+  if (billedCost > route.limits.max_cost_usd + Number.EPSILON) throw new RouterBudgetError('ROUTE_COST_LIMIT_EXCEEDED', 'billed response exceeded the qualified route cost limit', { cost_usd: billedCost, limit: route.limits.max_cost_usd });
+  if (billedUsage && billedUsage.total_tokens > route.limits.max_total_tokens) throw new RouterBudgetError('ROUTE_TOKEN_LIMIT_EXCEEDED', 'billed response exceeded the qualified route token limit', { usage: billedUsage, limit: route.limits.max_total_tokens });
+}
+
+function recordBilledAccounting({ budget, billedUsage, billedCost }) {
+  budget.record({ costUsd: billedCost, totalTokens: billedUsage?.total_tokens ?? 0 });
+}
+
 function accountBilledResponse({ error, route, budget, billedUsage, billedCost }) {
   if (error?.responseReceived !== true || billedCost === null) return error;
   try {
-    if (billedCost > route.limits.max_cost_usd + Number.EPSILON) throw new RouterBudgetError('ROUTE_COST_LIMIT_EXCEEDED', 'billed response exceeded the qualified route cost limit', { cost_usd: billedCost, limit: route.limits.max_cost_usd });
-    if (billedUsage && billedUsage.total_tokens > route.limits.max_total_tokens) throw new RouterBudgetError('ROUTE_TOKEN_LIMIT_EXCEEDED', 'billed response exceeded the qualified route token limit', { usage: billedUsage, limit: route.limits.max_total_tokens });
-    budget.record({ costUsd: billedCost, totalTokens: billedUsage?.total_tokens ?? 0 });
+    validateBilledRouteLimits({ route, billedUsage, billedCost });
+    recordBilledAccounting({ budget, billedUsage, billedCost });
     return error;
   } catch (budgetError) {
     return budgetError;
