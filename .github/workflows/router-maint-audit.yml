@@ -1,0 +1,67 @@
+name: forgeai-router-maint-audit
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: 9bf67e3930b8d27342a9b25d231d63d8224644d5
+  RELEASE_TREE: 39a94b50e3aa49b8691ceb415326b921ae5b39e1
+  BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+  FALLOW_VERSION: '3.10.0'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+      - name: Re-run deterministic gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run Fallow analyses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fallow-evidence
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain 2>/dev/null > fallow-evidence/audit.json
+          audit_status=$?
+          npx -y "fallow@$FALLOW_VERSION" health --complexity --top 200 --sort cyclomatic --format json --quiet --explain 2>/dev/null > fallow-evidence/health.json
+          health_status=$?
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet 2>/dev/null > fallow-evidence/security.json
+          security_status=$?
+          set -e
+          printf 'audit=%s\nhealth=%s\nsecurity=%s\n' "$audit_status" "$health_status" "$security_status" > fallow-evidence/exit-codes.txt
+          test "$audit_status" -ne 2
+          test "$health_status" -ne 2
+          test "$security_status" -ne 2
+          sha256sum fallow-evidence/*.json > fallow-evidence/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-router-maint-fallow-9bf67e39
+          retention-days: 14
+          if-no-files-found: error
+          path: fallow-evidence
