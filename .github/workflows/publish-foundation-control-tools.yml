@@ -38,9 +38,13 @@ jobs:
           root='transport/.forgeai-release/foundation-control-tools'
           printf '%s  %s\n' '487aec74997792635ac58ea1f1bcba8fecaeff77d70764fabf2a68a69f3d04b7' "$root/chunk-00.txt" | sha256sum --check --strict
           printf '%s  %s\n' '65d80506051839b333272ad30a43f60aa7e0182317e76c7f42b6560a5ea83bcc' "$root/chunk-01.txt" | sha256sum --check --strict
-          printf '%s  %s\n' 'bbae54a2b98dbd9f192df516bfbc12a52912b7de6cbcf1915914cc3314da87d6' "$root/chunk-02.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '2163533b6fc83d3c9a49a7087a6b74fcda829e7b4fdca3c03cb634fbed0ac224' "$root/chunk-02-0.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'd36f038a3467286ea2ccf67e4fedb9a36da4d2104babcc9e704a0b9e3555e2da' "$root/chunk-02-1.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'd325bdc282e8402bc20b63672dc5d2b4517db234dfec8cb6664de69f9a0b94e0' "$root/chunk-02-2.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'dc6f69a281ef508b96e59cda9c91eab64547b69e4a4851883d48047ab5574ecd' "$root/chunk-02-3a.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '95b3a324d2ac3847f74ea8f0f5c168503368cdbddf60d86e03cb7d46f1002515' "$root/chunk-02-3b.txt" | sha256sum --check --strict
           printf '%s  %s\n' '1d2088830011a7f4ef110a7bc1464fb83055760c40a5aa6b4d9d208923c1f392' "$root/chunk-03.txt" | sha256sum --check --strict
-          cat "$root/chunk-00.txt" "$root/chunk-01.txt" "$root/chunk-02.txt" "$root/chunk-03.txt" > "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64"
+          cat "$root/chunk-00.txt" "$root/chunk-01.txt" "$root/chunk-02-0.txt" "$root/chunk-02-1.txt" "$root/chunk-02-2.txt" "$root/chunk-02-3a.txt" "$root/chunk-02-3b.txt" "$root/chunk-03.txt" > "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64"
           test "$(wc -c < "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64")" -eq "$PATCH_B64_BYTES"
           base64 --decode "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64" > "$RUNNER_TEMP/foundation-control-tools.patch.gz"
           printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-control-tools.patch.gz" | sha256sum --check --strict
