@@ -1,18 +1,40 @@
 import { QUALIFIED_HARNESS } from './constants.mjs';
 
+function qualificationFailure(code, reason) {
+  return Object.freeze({ qualified: false, code, reason });
+}
+
+function qualificationStatusFailure(route) {
+  if (route.status === 'DISABLED') return qualificationFailure('ROUTE_DISABLED', 'route is disabled');
+  if (route.status !== 'QUALIFIED') return qualificationFailure('ROUTE_UNQUALIFIED', 'route has no accepted qualification');
+  return null;
+}
+
+function qualificationRecordFailure(qualification) {
+  if (!qualification || qualification.status !== 'QUALIFIED') return qualificationFailure('QUALIFICATION_MISSING', 'qualification record is missing');
+  if (qualification.harness !== QUALIFIED_HARNESS) return qualificationFailure('HARNESS_UNQUALIFIED', 'qualification targets a different harness');
+  return null;
+}
+
+function qualificationWindowFailure(qualification, now) {
+  const qualifiedAt = Date.parse(qualification.qualified_at);
+  const expiresAt = Date.parse(qualification.expires_at);
+  if (!Number.isFinite(qualifiedAt) || !Number.isFinite(expiresAt) || expiresAt <= qualifiedAt) return qualificationFailure('QUALIFICATION_INVALID', 'qualification timestamps are invalid');
+  if (qualifiedAt > now) return qualificationFailure('QUALIFICATION_NOT_YET_VALID', 'qualification starts in the future');
+  if (expiresAt <= now) return qualificationFailure('QUALIFICATION_EXPIRED', 'qualification has expired');
+  return null;
+}
+
 export function evaluateRouteQualification(route, { now = Date.now() } = {}) {
   if (!route || typeof route !== 'object') throw new TypeError('route is required');
   if (!Number.isFinite(now)) throw new TypeError('now must be finite');
-  if (route.status === 'DISABLED') return Object.freeze({ qualified: false, code: 'ROUTE_DISABLED', reason: 'route is disabled' });
-  if (route.status !== 'QUALIFIED') return Object.freeze({ qualified: false, code: 'ROUTE_UNQUALIFIED', reason: 'route has no accepted qualification' });
+  const statusFailure = qualificationStatusFailure(route);
+  if (statusFailure) return statusFailure;
   const qualification = route.qualification;
-  if (!qualification || qualification.status !== 'QUALIFIED') return Object.freeze({ qualified: false, code: 'QUALIFICATION_MISSING', reason: 'qualification record is missing' });
-  if (qualification.harness !== QUALIFIED_HARNESS) return Object.freeze({ qualified: false, code: 'HARNESS_UNQUALIFIED', reason: 'qualification targets a different harness' });
-  const qualifiedAt = Date.parse(qualification.qualified_at);
-  const expiresAt = Date.parse(qualification.expires_at);
-  if (!Number.isFinite(qualifiedAt) || !Number.isFinite(expiresAt) || expiresAt <= qualifiedAt) return Object.freeze({ qualified: false, code: 'QUALIFICATION_INVALID', reason: 'qualification timestamps are invalid' });
-  if (qualifiedAt > now) return Object.freeze({ qualified: false, code: 'QUALIFICATION_NOT_YET_VALID', reason: 'qualification starts in the future' });
-  if (expiresAt <= now) return Object.freeze({ qualified: false, code: 'QUALIFICATION_EXPIRED', reason: 'qualification has expired' });
+  const recordFailure = qualificationRecordFailure(qualification);
+  if (recordFailure) return recordFailure;
+  const windowFailure = qualificationWindowFailure(qualification, now);
+  if (windowFailure) return windowFailure;
   return Object.freeze({ qualified: true, code: 'QUALIFIED', reason: 'route qualification is valid', benchmark_id: qualification.benchmark_id, evidence_sha256: qualification.evidence_sha256, expires_at: qualification.expires_at });
 }
 

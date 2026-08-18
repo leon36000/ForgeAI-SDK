@@ -50,37 +50,49 @@ async function raceDeadline(promise, deadlineAt, clock, controller, stage) {
   }
 }
 
-async function readBoundedBody(response, { deadlineAt, clock, controller, maxBytes }) {
-  if (response.body?.getReader) {
-    const reader = response.body.getReader();
-    const chunks = [];
-    let bytes = 0;
-    try {
-      while (true) {
-        const item = await raceDeadline(reader.read(), deadlineAt, clock, controller, 'response body');
-        if (item.done) break;
-        const chunk = item.value instanceof Uint8Array ? item.value : new Uint8Array(item.value);
-        bytes += chunk.byteLength;
-        if (bytes > maxBytes) {
-          controller.abort();
-          void reader.cancel().catch(() => {});
-          throw new LiteLLMClientError('RESPONSE_TOO_LARGE', 'LiteLLM response exceeded the byte limit', { responseReceived: true, httpStatus: response.status });
-        }
-        chunks.push(chunk);
+function decodeResponseBytes(bytes, response) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch { throw new LiteLLMClientError('RESPONSE_ENCODING_INVALID', 'LiteLLM response was not valid UTF-8', { responseReceived: true, httpStatus: response.status }); }
+}
+
+function mergeBodyChunks(chunks, totalBytes) {
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+  return merged;
+}
+
+async function readStreamingBody(response, { deadlineAt, clock, controller, maxBytes }) {
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const item = await raceDeadline(reader.read(), deadlineAt, clock, controller, 'response body');
+      if (item.done) break;
+      const chunk = item.value instanceof Uint8Array ? item.value : new Uint8Array(item.value);
+      bytes += chunk.byteLength;
+      if (bytes > maxBytes) {
+        controller.abort();
+        void reader.cancel().catch(() => {});
+        throw new LiteLLMClientError('RESPONSE_TOO_LARGE', 'LiteLLM response exceeded the byte limit', { responseReceived: true, httpStatus: response.status });
       }
-    } finally {
-      try { reader.releaseLock?.(); } catch {}
+      chunks.push(chunk);
     }
-    const merged = new Uint8Array(bytes);
-    let offset = 0;
-    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
-    try { return new TextDecoder('utf-8', { fatal: true }).decode(merged); }
-    catch { throw new LiteLLMClientError('RESPONSE_ENCODING_INVALID', 'LiteLLM response was not valid UTF-8', { responseReceived: true, httpStatus: response.status }); }
+  } finally {
+    try { reader.releaseLock?.(); } catch {}
   }
+  return decodeResponseBytes(mergeBodyChunks(chunks, bytes), response);
+}
+
+async function readBufferedBody(response, { deadlineAt, clock, controller, maxBytes }) {
   const buffer = await raceDeadline(response.arrayBuffer(), deadlineAt, clock, controller, 'response body');
   if (buffer.byteLength > maxBytes) throw new LiteLLMClientError('RESPONSE_TOO_LARGE', 'LiteLLM response exceeded the byte limit', { responseReceived: true, httpStatus: response.status });
-  try { return new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
-  catch { throw new LiteLLMClientError('RESPONSE_ENCODING_INVALID', 'LiteLLM response was not valid UTF-8', { responseReceived: true, httpStatus: response.status }); }
+  return decodeResponseBytes(buffer, response);
+}
+
+async function readBoundedBody(response, options) {
+  return response.body?.getReader ? readStreamingBody(response, options) : readBufferedBody(response, options);
 }
 
 function parseInteger(value, label) {
@@ -88,17 +100,20 @@ function parseInteger(value, label) {
   return value;
 }
 
+function parseUsageTokens(usage, details) {
+  const input = parseInteger(usage.prompt_tokens ?? usage.input_tokens, 'input token usage');
+  const output = parseInteger(usage.completion_tokens ?? usage.output_tokens, 'output token usage');
+  const total = parseInteger(usage.total_tokens, 'total token usage');
+  if (total < input + output) throw new LiteLLMClientError('USAGE_INVALID', 'total token usage is smaller than input plus output', { responseReceived: true, details });
+  return Object.freeze({ input_tokens: input, output_tokens: output, total_tokens: total });
+}
+
 function extractUsage(payload, responseCost) {
   const usage = payload?.usage;
   const details = responseCost === null ? {} : { response_cost_usd: responseCost };
   if (!usage || typeof usage !== 'object') throw new LiteLLMClientError('USAGE_MISSING', 'a billed HTTP 200 response did not contain reliable token usage', { responseReceived: true, details });
-  try {
-    const input = parseInteger(usage.prompt_tokens ?? usage.input_tokens, 'input token usage');
-    const output = parseInteger(usage.completion_tokens ?? usage.output_tokens, 'output token usage');
-    const total = parseInteger(usage.total_tokens, 'total token usage');
-    if (total < input + output) throw new LiteLLMClientError('USAGE_INVALID', 'total token usage is smaller than input plus output', { responseReceived: true, details });
-    return Object.freeze({ input_tokens: input, output_tokens: output, total_tokens: total });
-  } catch (error) {
+  try { return parseUsageTokens(usage, details); }
+  catch (error) {
     if (error instanceof LiteLLMClientError) throw new LiteLLMClientError(error.code, error.message, { responseReceived: true, details });
     throw error;
   }
@@ -117,16 +132,20 @@ function payloadCost(payload) {
   return null;
 }
 
-function assistantContent(payload) {
+function assistantMessage(payload) {
   const choice = payload?.choices?.[0];
   if (!choice || typeof choice !== 'object') throw new LiteLLMClientError('RESPONSE_INVALID', 'LiteLLM response has no first choice', { responseReceived: true });
   const message = choice.message;
   if (!message || typeof message !== 'object') throw new LiteLLMClientError('RESPONSE_INVALID', 'LiteLLM response has no assistant message', { responseReceived: true });
+  return message;
+}
+
+function assistantContent(payload) {
+  const message = assistantMessage(payload);
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) throw new LiteLLMClientError('TOOL_CALL_DENIED', 'external advisory models may not call tools', { responseReceived: true });
   if (typeof message.content !== 'string' || message.content.length === 0) throw new LiteLLMClientError('RESPONSE_INVALID', 'assistant content must be a non-empty string', { responseReceived: true });
   return message.content;
 }
-
 
 function validateApiKey(apiKey) {
   if (typeof apiKey !== 'string' || apiKey.length === 0) throw new LiteLLMClientError('API_KEY_MISSING', 'LiteLLM API key is missing');

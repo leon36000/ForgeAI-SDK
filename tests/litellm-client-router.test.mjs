@@ -228,3 +228,10 @@ test('LiteLLM client invoke delegates request, HTTP, parsing, and billed-respons
   assert.ok(nonBlankLines.length <= 16, `invoke() must stay orchestration-only; found ${nonBlankLines.length} non-blank lines`);
   for (const helper of expectedHelpers) assert.match(body, new RegExp(`\\b${helper}\\b`), `invoke() must delegate through ${helper}`);
 });
+
+test('LiteLLM client decomposes bounded body, usage, and assistant-content validation', async () => {
+  const source = await readFile(new URL('../src/litellm-router/client.mjs', import.meta.url), 'utf8');
+  for (const helper of ['readStreamingBody', 'readBufferedBody', 'decodeResponseBytes', 'parseUsageTokens', 'assistantMessage']) {
+    assert.match(source, new RegExp(`(?:async\\s+)?function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+});

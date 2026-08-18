@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createBudgetTracker, deriveResponseCost, effectiveRouteLimits, RouterBudgetError } from '../src/litellm-router/budget.mjs';
 import { createCircuitBreaker } from '../src/litellm-router/circuit-breaker.mjs';
 import { validateAdvisoryRequest, validateAdvisoryResult, validateRouterPolicy } from '../src/litellm-router/contracts.mjs';
@@ -77,4 +78,16 @@ test('budget expiry is deterministic', () => {
 test('response cost derives only from reliable accounting', () => {
   assert.equal(deriveResponseCost({ usage: { input_tokens: 100, output_tokens: 50 }, responseCost: null, pricing: { input_per_million_usd: 1, output_per_million_usd: 2 } }), 0.0002);
   assert.equal(deriveResponseCost({ usage: null, responseCost: null, pricing: null }), null);
+});
+
+
+test('qualification and policy validation delegate bounded internal responsibilities', async () => {
+  const qualificationSource = await readFile(new URL('../src/litellm-router/qualification.mjs', import.meta.url), 'utf8');
+  for (const helper of ['qualificationStatusFailure', 'qualificationRecordFailure', 'qualificationWindowFailure']) {
+    assert.match(qualificationSource, new RegExp(`function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+  const policySource = await readFile(new URL('../src/litellm-router/contracts.mjs', import.meta.url), 'utf8');
+  for (const helper of ['parsePolicyRoutes', 'parseCapabilityRoutes']) {
+    assert.match(policySource, new RegExp(`function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
 });
