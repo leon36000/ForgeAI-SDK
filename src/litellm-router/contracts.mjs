@@ -295,5 +295,3 @@ export function validateAdvisoryResult(value) {
     confidence: number(value.confidence, 'result.confidence', { min: 0, max: 1 }),
   });
 }
-
-export const CONTRACT_PATTERNS = Object.freeze({ IDENTIFIER, ENV_NAME, SHA256, ISO_DATE });

@@ -1,0 +1,8 @@
+{
+  "entry": [
+    "tests/**/*.test.mjs",
+    "scripts/check-manifest.mjs",
+    "scripts/security-audit.mjs",
+    "scripts/install-into-repo.mjs"
+  ]
+}
