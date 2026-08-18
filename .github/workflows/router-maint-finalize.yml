@@ -13,44 +13,64 @@ permissions:
 
 env:
   TARGET_BRANCH: forgeai/router-maintainability-0.3.0-alpha.1
-  EXPECTED_INPUT_SHA: cb9b76686914aaed46a2a77e782212e73206ca44
+  EXPECTED_INPUT_SHA: 85a8f235e292af5fa656849efc7d67fe677a33ab
   BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+  PATCH_SHA256: 3773e3cd4685908759d0fc88c067e6f1bf99bf338a084160ae1a7563e9fd3ebe
 
 jobs:
   finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact target branch
+        uses: actions/checkout@v6
         with:
           ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
+          path: release
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
       - name: Refuse moved branch or wrong base
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_INPUT_SHA"
           git merge-base --is-ancestor "$BASE_SHA" HEAD
+      - name: Decode and apply exact TDD patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode transport/.forgeai-release/router-maint-accounting.patch.gz.b64 > "$RUNNER_TEMP/router-maint.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/router-maint.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/router-maint.patch.gz"
+          gzip --decompress --stdout "$RUNNER_TEMP/router-maint.patch.gz" | git -C release apply --index --binary
+          git -C release diff --cached --check
+          test -n "$(git -C release diff --cached --name-only)"
       - name: Regenerate source manifest
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
           node scripts/source-manifest.mjs
           git add SOURCE_MANIFEST.json
           git diff --cached --check
-          test -n "$(git diff --cached --name-only)"
-      - name: Commit sealed manifest
+      - name: Commit sealed tree
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'ForgeAI Release Bot'
           git config user.email 'forgeai-release@users.noreply.github.com'
-          git commit -m 'chore: reseal router maintainability manifest'
+          git commit -m 'refactor: split billed accounting limits'
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
       - name: Run full deterministic gates
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
@@ -60,6 +80,7 @@ jobs:
           grep -q '^PASS ' verification/VERIFIED
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
       - name: Prove router remains read-only and unqualified
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
@@ -75,6 +96,7 @@ jobs:
           if (!doctor.routes.every((route) => route.status === 'UNQUALIFIED' && route.ready === false)) throw new Error('route unexpectedly qualified');
           NODE
       - name: Push sealed commit
+        working-directory: release
         shell: bash
         run: |
           set -euo pipefail
