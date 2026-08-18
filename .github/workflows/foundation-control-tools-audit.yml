@@ -1,0 +1,74 @@
+name: forgeai-foundation-control-tools-audit
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: bbf821e5849743db81084aa5c73bafa7c5d04cd2
+  RELEASE_TREE: e5e4f0d4943826fe60a229f95f9b6b209d146959
+  BASE_SHA: 298438d35014ddf4b30313b02de2b8849c7a4eb4
+  FALLOW_VERSION: '3.10.0'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify exact Foundation identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+      - name: Re-run deterministic release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run exact Fallow audit and security
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/foundation-control-tools-audit"
+          mkdir -p "$evidence"
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain 2>/dev/null > "$evidence/audit.json"
+          audit_status=$?
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet 2>/dev/null > "$evidence/security.json"
+          security_status=$?
+          set -e
+          printf 'audit=%s\nsecurity=%s\n' "$audit_status" "$security_status" > "$evidence/exit-codes.txt"
+          test "$audit_status" -ne 2
+          test "$security_status" -ne 2
+          node --input-type=module - "$evidence/audit.json" "$evidence/security.json" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const [auditPath, securityPath] = process.argv.slice(2);
+          const audit = JSON.parse(readFileSync(auditPath, 'utf8'));
+          const security = JSON.parse(readFileSync(securityPath, 'utf8'));
+          const findings = security.findings ?? security.issues ?? security.security_findings ?? [];
+          if (findings.length !== 0) throw new Error(`expected zero Fallow security findings, got ${findings.length}`);
+          const regression = audit.regression ?? audit.summary?.regression ?? null;
+          console.log(JSON.stringify({ verdict: audit.verdict ?? audit.status ?? null, security_findings: findings.length, regression }));
+          NODE
+          sha256sum "$evidence"/*.json > "$evidence/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: forgeai-foundation-control-tools-fallow-bbf821e5
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/foundation-control-tools-audit
