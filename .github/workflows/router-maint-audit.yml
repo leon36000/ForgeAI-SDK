@@ -35,11 +35,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p maint002-evidence
+          evidence="$RUNNER_TEMP/maint002-evidence"
+          mkdir -p "$evidence"
           set +e
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/baseline.json
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/baseline.json"
           baseline_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --trace src/litellm-router/contracts.mjs:CONTRACT_PATTERNS --format json --quiet 2>/dev/null > maint002-evidence/contract-patterns-trace.json
+          npx -y "fallow@$FALLOW_VERSION" dead-code --trace src/litellm-router/contracts.mjs:CONTRACT_PATTERNS --format json --quiet 2>/dev/null > "$evidence/contract-patterns-trace.json"
           trace_status=$?
           set -e
           cat > .fallowrc.json <<'JSON'
@@ -53,11 +54,13 @@ jobs:
           }
           JSON
           set +e
-          npx -y "fallow@$FALLOW_VERSION" list --entry-points --format json --quiet 2>/dev/null > maint002-evidence/config-entry-points.json
+          npx -y "fallow@$FALLOW_VERSION" list --entry-points --format json --quiet 2>/dev/null > "$evidence/config-entry-points.json"
           entry_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/config-only.json
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/config-only.json"
           config_status=$?
           set -e
+          cp .fallowrc.json "$RUNNER_TEMP/fallowrc.candidate"
+          rm .fallowrc.json
           cp src/litellm-router/contracts.mjs "$RUNNER_TEMP/contracts.before"
           python3 - <<'PY'
           from pathlib import Path
@@ -67,23 +70,24 @@ jobs:
           if needle not in s: raise SystemExit('expected CONTRACT_PATTERNS export not found')
           p.write_text(s.replace(needle,'\n'))
           PY
-          npm test > maint002-evidence/npm-test-after-contract-removal.log
+          npm test > "$evidence/npm-test-after-contract-removal.log"
+          mv "$RUNNER_TEMP/fallowrc.candidate" .fallowrc.json
           set +e
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/config-plus-contract-removal.json
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/config-plus-contract-removal.json"
           removal_status=$?
           set -e
           mv "$RUNNER_TEMP/contracts.before" src/litellm-router/contracts.mjs
           rm .fallowrc.json
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
-          printf 'baseline=%s\ntrace=%s\nentry=%s\nconfig=%s\nremoval=%s\n' "$baseline_status" "$trace_status" "$entry_status" "$config_status" "$removal_status" > maint002-evidence/exit-codes.txt
+          printf 'baseline=%s\ntrace=%s\nentry=%s\nconfig=%s\nremoval=%s\n' "$baseline_status" "$trace_status" "$entry_status" "$config_status" "$removal_status" > "$evidence/exit-codes.txt"
           test "$trace_status" -ne 2
           test "$entry_status" -ne 2
           test "$config_status" -ne 2
           test "$removal_status" -ne 2
-          sha256sum maint002-evidence/*.json > maint002-evidence/SHA256SUMS.txt
+          sha256sum "$evidence"/*.json > "$evidence/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v7
         with:
           name: forgeai-maint002-candidate-analysis-27418e31
           retention-days: 14
           if-no-files-found: error
-          path: maint002-evidence
+          path: ${{ runner.temp }}/maint002-evidence
