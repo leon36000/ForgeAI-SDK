@@ -35,44 +35,63 @@ export function createMcpServer({ router, input = process.stdin, output = proces
     if (!closed) output.write(`${JSON.stringify(message)}\n`);
   }
 
+  function validateRpcMessage(message) {
+    const valid = Boolean(message) && typeof message === 'object' && !Array.isArray(message) && message.jsonrpc === '2.0' && typeof message.method === 'string';
+    return { valid, notification: valid ? !hasId(message) : false };
+  }
+
+  function handleInitializeRequest(message, notification) {
+    if (message.method !== 'initialize') return false;
+    if (notification) return true;
+    if (state !== 'NEW') { send(rpcError(message.id, -32600, 'Server is already initialized')); return true; }
+    state = 'INITIALIZING';
+    send(rpcResult(message.id, {
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: 'forgeai-litellm-readonly', version: '0.3.0-alpha.1' },
+      instructions: 'Read-only external advisory. No model tools and no EXECUTE capability.',
+    }));
+    return true;
+  }
+
+  function handleInitializedNotification(message, notification) {
+    if (message.method !== 'notifications/initialized') return false;
+    if (!notification) { send(rpcError(message.id, -32600, 'notifications/initialized must not include an id')); return true; }
+    if (state === 'INITIALIZING') state = 'READY';
+    return true;
+  }
+
+  function shapeRouterFailure(error) {
+    return { code: error?.code ?? 'INTERNAL_ERROR' };
+  }
+
+  async function dispatchReadOnlyTool(message) {
+    if (message.params?.name !== TOOL_NAME) { send(rpcError(message.id, -32602, 'Unknown tool')); return; }
+    try {
+      const result = await router.run(message.params?.arguments);
+      send(rpcResult(message.id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result, isError: result.status === 'BLOCKED' }));
+    } catch (error) {
+      send(rpcError(message.id, -32603, 'Router failure', shapeRouterFailure(error)));
+    }
+  }
+
+  async function handleReadyRequest(message) {
+    switch (message.method) {
+      case 'ping': send(rpcResult(message.id, {})); return;
+      case 'tools/list': send(rpcResult(message.id, { tools: [toolDefinition()] })); return;
+      case 'tools/call': await dispatchReadOnlyTool(message); return;
+      default: send(rpcError(message.id, -32601, 'Method not found'));
+    }
+  }
+
   async function handle(message) {
-    if (!message || typeof message !== 'object' || Array.isArray(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
-      if (message && hasId(message)) send(rpcError(message.id, -32600, 'Invalid Request'));
-      return;
-    }
-    const notification = !hasId(message);
-    if (message.method === 'initialize') {
-      if (notification) return;
-      if (state !== 'NEW') { send(rpcError(message.id, -32600, 'Server is already initialized')); return; }
-      state = 'INITIALIZING';
-      send(rpcResult(message.id, {
-        protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'forgeai-litellm-readonly', version: '0.3.0-alpha.1' },
-        instructions: 'Read-only external advisory. No model tools and no EXECUTE capability.',
-      }));
-      return;
-    }
-    if (message.method === 'notifications/initialized') {
-      if (!notification) { send(rpcError(message.id, -32600, 'notifications/initialized must not include an id')); return; }
-      if (state === 'INITIALIZING') state = 'READY';
-      return;
-    }
-    if (notification) return;
+    const validation = validateRpcMessage(message);
+    if (!validation.valid) { if (message && hasId(message)) send(rpcError(message.id, -32600, 'Invalid Request')); return; }
+    if (handleInitializeRequest(message, validation.notification)) return;
+    if (handleInitializedNotification(message, validation.notification)) return;
+    if (validation.notification) return;
     if (state !== 'READY') { send(rpcError(message.id, -32002, 'Server is not initialized')); return; }
-    if (message.method === 'ping') { send(rpcResult(message.id, {})); return; }
-    if (message.method === 'tools/list') { send(rpcResult(message.id, { tools: [toolDefinition()] })); return; }
-    if (message.method === 'tools/call') {
-      if (message.params?.name !== TOOL_NAME) { send(rpcError(message.id, -32602, 'Unknown tool')); return; }
-      try {
-        const result = await router.run(message.params?.arguments);
-        send(rpcResult(message.id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result, isError: result.status === 'BLOCKED' }));
-      } catch (error) {
-        send(rpcError(message.id, -32603, 'Router failure', { code: error.code ?? 'INTERNAL_ERROR' }));
-      }
-      return;
-    }
-    send(rpcError(message.id, -32601, 'Method not found'));
+    await handleReadyRequest(message);
   }
 
   const lines = createInterface({ input, crlfDelay: Infinity, terminal: false });

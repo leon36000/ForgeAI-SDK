@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
+import { readFile } from 'node:fs/promises';
 import { createMcpServer } from '../src/litellm-router/mcp-server.mjs';
 import { request } from './litellm-router-helpers.mjs';
 
@@ -77,4 +78,35 @@ test('unknown MCP tools are rejected', async (t) => {
   const messages = await h.wait(2);
   assert.equal(messages[1].error.code, -32602);
   assert.equal(h.calls.length, 0);
+});
+
+function mcpHandleBody(text) {
+  const startMarker = '  async function handle(message) {';
+  const endMarker = '\n\n  const lines = createInterface';
+  const start = text.indexOf(startMarker);
+  const end = text.indexOf(endMarker, start);
+  assert.notEqual(start, -1, 'handle() declaration must remain discoverable');
+  assert.notEqual(end, -1, 'line reader declaration must remain discoverable');
+  return text.slice(start, end);
+}
+
+test('MCP handle delegates validation lifecycle notifications and read-only dispatch', async () => {
+  const source = await readFile(new URL('../src/litellm-router/mcp-server.mjs', import.meta.url), 'utf8');
+  const expectedHelpers = [
+    'validateRpcMessage',
+    'handleInitializeRequest',
+    'handleInitializedNotification',
+    'dispatchReadOnlyTool',
+    'handleReadyRequest',
+    'shapeRouterFailure',
+  ];
+  for (const helper of expectedHelpers) {
+    assert.match(source, new RegExp(`(?:async\\s+)?function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+  const body = mcpHandleBody(source);
+  const nonBlankLines = body.split('\n').filter((line) => line.trim().length > 0);
+  assert.ok(nonBlankLines.length <= 18, `handle() must stay orchestration-only; found ${nonBlankLines.length} non-blank lines`);
+  for (const helper of ['validateRpcMessage', 'handleInitializeRequest', 'handleInitializedNotification', 'handleReadyRequest']) {
+    assert.match(body, new RegExp(`\\b${helper}\\b`), `handle() must delegate through ${helper}`);
+  }
 });
