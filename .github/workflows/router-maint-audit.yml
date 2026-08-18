@@ -1,4 +1,4 @@
-name: forgeai-maint002-fallow-investigation
+name: forgeai-maint002-final-audit
 
 on:
   pull_request:
@@ -9,14 +9,15 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 27418e312048858ca4804ec97509ba8b810ddd05
-  RELEASE_TREE: 71b3d102789ab426571aab7ab972eab40452eaa7
+  RELEASE_SHA: ef87a1603c309a9072de54bbdcb7fad2f3df6dba
+  RELEASE_TREE: a72fe77b866bcbe9bc0c88da701b537a0eec9ecc
+  BASE_SHA: 27418e312048858ca4804ec97509ba8b810ddd05
   FALLOW_VERSION: '3.10.0'
 
 jobs:
-  investigate:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -31,63 +32,53 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
-      - name: Compare dead-code configurations on ephemeral copies
+          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
+      - name: Re-run deterministic gates
         shell: bash
         run: |
           set -euo pipefail
-          evidence="$RUNNER_TEMP/maint002-evidence"
+          npm test
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run exact Fallow analyses
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/maint002-final"
           mkdir -p "$evidence"
           set +e
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/baseline.json"
-          baseline_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --trace src/litellm-router/contracts.mjs:CONTRACT_PATTERNS --format json --quiet 2>/dev/null > "$evidence/contract-patterns-trace.json"
-          trace_status=$?
+          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain 2>/dev/null > "$evidence/audit.json"
+          audit_status=$?
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/dead-code.json"
+          dead_status=$?
+          npx -y "fallow@$FALLOW_VERSION" health --complexity --top 200 --sort cyclomatic --format json --quiet --explain 2>/dev/null > "$evidence/health.json"
+          health_status=$?
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet 2>/dev/null > "$evidence/security.json"
+          security_status=$?
           set -e
-          cat > .fallowrc.json <<'JSON'
-          {
-            "entry": [
-              "tests/**/*.test.mjs",
-              "scripts/check-manifest.mjs",
-              "scripts/security-audit.mjs",
-              "scripts/install-into-repo.mjs"
-            ]
-          }
-          JSON
-          set +e
-          npx -y "fallow@$FALLOW_VERSION" list --entry-points --format json --quiet 2>/dev/null > "$evidence/config-entry-points.json"
-          entry_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/config-only.json"
-          config_status=$?
-          set -e
-          cp .fallowrc.json "$RUNNER_TEMP/fallowrc.candidate"
-          rm .fallowrc.json
-          cp src/litellm-router/contracts.mjs "$RUNNER_TEMP/contracts.before"
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('src/litellm-router/contracts.mjs')
-          s=p.read_text()
-          needle='\nexport const CONTRACT_PATTERNS = Object.freeze({ IDENTIFIER, ENV_NAME, SHA256, ISO_DATE });\n'
-          if needle not in s: raise SystemExit('expected CONTRACT_PATTERNS export not found')
-          p.write_text(s.replace(needle,'\n'))
-          PY
-          npm test > "$evidence/npm-test-after-contract-removal.log"
-          mv "$RUNNER_TEMP/fallowrc.candidate" .fallowrc.json
-          set +e
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/config-plus-contract-removal.json"
-          removal_status=$?
-          set -e
-          mv "$RUNNER_TEMP/contracts.before" src/litellm-router/contracts.mjs
-          rm .fallowrc.json
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
-          printf 'baseline=%s\ntrace=%s\nentry=%s\nconfig=%s\nremoval=%s\n' "$baseline_status" "$trace_status" "$entry_status" "$config_status" "$removal_status" > "$evidence/exit-codes.txt"
-          test "$trace_status" -ne 2
-          test "$entry_status" -ne 2
-          test "$config_status" -ne 2
-          test "$removal_status" -ne 2
+          printf 'audit=%s\ndead=%s\nhealth=%s\nsecurity=%s\n' "$audit_status" "$dead_status" "$health_status" "$security_status" > "$evidence/exit-codes.txt"
+          test "$audit_status" -ne 2
+          test "$dead_status" -ne 2
+          test "$health_status" -ne 2
+          test "$security_status" -ne 2
+          node --input-type=module - "$evidence/dead-code.json" "$evidence/security.json" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const [deadPath, securityPath] = process.argv.slice(2);
+          const dead = JSON.parse(readFileSync(deadPath, 'utf8'));
+          const security = JSON.parse(readFileSync(securityPath, 'utf8'));
+          const unusedFiles = dead.unused_files ?? dead.unusedFiles ?? [];
+          const unusedExports = dead.unused_exports ?? dead.unusedExports ?? [];
+          if (unusedFiles.length !== 0) throw new Error(`expected zero unused files, got ${unusedFiles.length}`);
+          if (unusedExports.some((item) => JSON.stringify(item).includes('CONTRACT_PATTERNS'))) throw new Error('CONTRACT_PATTERNS still reported unused');
+          const findings = security.findings ?? security.issues ?? security.security_findings ?? [];
+          if (findings.length !== 0) throw new Error(`expected zero security findings, got ${findings.length}`);
+          console.log(JSON.stringify({ unused_files: unusedFiles.length, unused_exports: unusedExports.length, security_findings: findings.length }));
+          NODE
           sha256sum "$evidence"/*.json > "$evidence/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-maint002-candidate-analysis-27418e31
+          name: forgeai-maint002-final-fallow-ef87a160
           retention-days: 14
           if-no-files-found: error
-          path: ${{ runner.temp }}/maint002-evidence
+          path: ${{ runner.temp }}/maint002-final
