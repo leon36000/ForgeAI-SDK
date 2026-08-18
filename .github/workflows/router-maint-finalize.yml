@@ -1,0 +1,79 @@
+name: forgeai-router-maint-finalize
+
+on:
+  push:
+    branches:
+      - forgeai/router-maint-finalize-0.3.0-alpha.1
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: forgeai/router-maintainability-0.3.0-alpha.1
+  EXPECTED_INPUT_SHA: 8cceaa86e092e04ab967fa9f0a9eaf0ef05a81cf
+  BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Refuse moved branch or wrong base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_INPUT_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+      - name: Regenerate source manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/source-manifest.mjs
+          git add SOURCE_MANIFEST.json
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+      - name: Commit sealed manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'chore: reseal router maintainability manifest'
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run full deterministic gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run lint
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Prove router remains read-only and unqualified
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node bin/forgeai-litellm-router.mjs doctor > "$RUNNER_TEMP/doctor.json"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const doctor = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/doctor.json`, 'utf8'));
+          if (doctor.status !== 'BLOCKED' || doctor.ready_routes !== 0) throw new Error('router unexpectedly ready');
+          if (!doctor.routes.every((route) => route.status === 'UNQUALIFIED' && route.ready === false)) throw new Error('route unexpectedly qualified');
+          NODE
+      - name: Push sealed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
