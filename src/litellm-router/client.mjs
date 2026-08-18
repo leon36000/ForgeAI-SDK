@@ -127,71 +127,98 @@ function assistantContent(payload) {
   return message.content;
 }
 
+
+function validateApiKey(apiKey) {
+  if (typeof apiKey !== 'string' || apiKey.length === 0) throw new LiteLLMClientError('API_KEY_MISSING', 'LiteLLM API key is missing');
+}
+
+function createRequestContext({ baseUrl, timeoutMs, externalSignal, clock }) {
+  const url = endpointUrl(baseUrl);
+  const controller = new AbortController();
+  const deadlineAt = clock() + timeoutMs;
+  const onExternalAbort = () => controller.abort(externalSignal.reason);
+  externalSignal?.addEventListener?.('abort', onExternalAbort, { once: true });
+  if (externalSignal?.aborted) controller.abort(externalSignal.reason);
+  return { url, controller, deadlineAt, onExternalAbort };
+}
+
+function buildChatPayload({ model, systemPrompt, userPrompt, maxOutputTokens, requestId }) {
+  return {
+    model,
+    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+    max_tokens: maxOutputTokens,
+    stream: false,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    user: requestId,
+  };
+}
+
+async function performRequest({ fetchImpl, context, apiKey, body, requestId, externalSignal, clock }) {
+  try {
+    return await raceDeadline(fetchImpl(context.url, {
+      method: 'POST',
+      headers: { accept: 'application/json', authorization: `Bearer ${apiKey}`, 'content-type': 'application/json', 'x-forgeai-request-id': requestId },
+      body: JSON.stringify(body),
+      signal: context.controller.signal,
+      redirect: 'error',
+    }), context.deadlineAt, clock, context.controller, 'request');
+  } catch (error) {
+    if (error instanceof LiteLLMClientError) throw error;
+    if (context.controller.signal.aborted) throw timeoutError('request');
+    throw new LiteLLMClientError('LITELLM_NETWORK_ERROR', 'LiteLLM request failed before a response was received', { retryable: true, details: { cause: error?.name ?? 'Error' } });
+  } finally {
+    externalSignal?.removeEventListener?.('abort', context.onExternalAbort);
+  }
+}
+
+function rejectHttpError(response, text) {
+  if (response.ok) return;
+  throw new LiteLLMClientError(`LITELLM_HTTP_${response.status}`, `LiteLLM returned HTTP ${response.status}`, {
+    retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+    responseReceived: false,
+    httpStatus: response.status,
+    details: { body_sha256: createHash('sha256').update(text).digest('hex') },
+  });
+}
+
+function parseBilledPayload({ text, response, responseCostHeader }) {
+  try { return JSON.parse(text); }
+  catch {
+    throw new LiteLLMClientError('RESPONSE_JSON_INVALID', 'billed HTTP 200 response was not valid JSON', {
+      responseReceived: true,
+      httpStatus: response.status,
+      details: responseCostHeader === null ? {} : { response_cost_usd: responseCostHeader },
+    });
+  }
+}
+
+function finalizeSuccessfulResponse({ payload, response, responseCostHeader, model }) {
+  const responseCost = payloadCost(payload) ?? responseCostHeader;
+  const usage = extractUsage(payload, responseCost);
+  let content;
+  try { content = assistantContent(payload); }
+  catch (error) {
+    if (error instanceof LiteLLMClientError) throw new LiteLLMClientError(error.code, error.message, { responseReceived: true, httpStatus: response.status, details: { usage, response_cost_usd: responseCost } });
+    throw error;
+  }
+  return Object.freeze({ content, usage, response_cost_usd: responseCost, response_id: typeof payload.id === 'string' ? payload.id : null, model: typeof payload.model === 'string' ? payload.model : model, http_status: response.status });
+}
+
 export function createLiteLLMClient({ fetchImpl = globalThis.fetch, clock = Date.now } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
   if (typeof clock !== 'function') throw new TypeError('clock must be a function');
   return Object.freeze({
     async invoke({ baseUrl, apiKey, model, systemPrompt, userPrompt, maxOutputTokens, timeoutMs, requestId, externalSignal }) {
-      if (typeof apiKey !== 'string' || apiKey.length === 0) throw new LiteLLMClientError('API_KEY_MISSING', 'LiteLLM API key is missing');
-      const url = endpointUrl(baseUrl);
-      const controller = new AbortController();
-      const deadlineAt = clock() + timeoutMs;
-      const onExternalAbort = () => controller.abort(externalSignal.reason);
-      externalSignal?.addEventListener?.('abort', onExternalAbort, { once: true });
-      if (externalSignal?.aborted) controller.abort(externalSignal.reason);
-      const body = {
-        model,
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        max_tokens: maxOutputTokens,
-        stream: false,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        user: requestId,
-      };
-      let response;
-      try {
-        response = await raceDeadline(fetchImpl(url, {
-          method: 'POST',
-          headers: { accept: 'application/json', authorization: `Bearer ${apiKey}`, 'content-type': 'application/json', 'x-forgeai-request-id': requestId },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-          redirect: 'error',
-        }), deadlineAt, clock, controller, 'request');
-      } catch (error) {
-        if (error instanceof LiteLLMClientError) throw error;
-        if (controller.signal.aborted) throw timeoutError('request');
-        throw new LiteLLMClientError('LITELLM_NETWORK_ERROR', 'LiteLLM request failed before a response was received', { retryable: true, details: { cause: error?.name ?? 'Error' } });
-      } finally {
-        externalSignal?.removeEventListener?.('abort', onExternalAbort);
-      }
-      const text = await readBoundedBody(response, { deadlineAt, clock, controller, maxBytes: LITELLM_ROUTER_LIMITS.max_response_bytes });
-      if (!response.ok) {
-        throw new LiteLLMClientError(`LITELLM_HTTP_${response.status}`, `LiteLLM returned HTTP ${response.status}`, {
-          retryable: response.status === 408 || response.status === 429 || response.status >= 500,
-          responseReceived: false,
-          httpStatus: response.status,
-          details: { body_sha256: createHash('sha256').update(text).digest('hex') },
-        });
-      }
+      validateApiKey(apiKey);
+      const context = createRequestContext({ baseUrl, timeoutMs, externalSignal, clock });
+      const body = buildChatPayload({ model, systemPrompt, userPrompt, maxOutputTokens, requestId });
+      const response = await performRequest({ fetchImpl, context, apiKey, body, requestId, externalSignal, clock });
+      const text = await readBoundedBody(response, { deadlineAt: context.deadlineAt, clock, controller: context.controller, maxBytes: LITELLM_ROUTER_LIMITS.max_response_bytes });
+      rejectHttpError(response, text);
       const responseCostHeader = headerCost(response);
-      let payload;
-      try { payload = JSON.parse(text); }
-      catch {
-        throw new LiteLLMClientError('RESPONSE_JSON_INVALID', 'billed HTTP 200 response was not valid JSON', {
-          responseReceived: true,
-          httpStatus: response.status,
-          details: responseCostHeader === null ? {} : { response_cost_usd: responseCostHeader },
-        });
-      }
-      const responseCost = payloadCost(payload) ?? responseCostHeader;
-      const usage = extractUsage(payload, responseCost);
-      let content;
-      try { content = assistantContent(payload); }
-      catch (error) {
-        if (error instanceof LiteLLMClientError) throw new LiteLLMClientError(error.code, error.message, { responseReceived: true, httpStatus: response.status, details: { usage, response_cost_usd: responseCost } });
-        throw error;
-      }
-      return Object.freeze({ content, usage, response_cost_usd: responseCost, response_id: typeof payload.id === 'string' ? payload.id : null, model: typeof payload.model === 'string' ? payload.model : model, http_status: response.status });
+      const payload = parseBilledPayload({ text, response, responseCostHeader });
+      return finalizeSuccessfulResponse({ payload, response, responseCostHeader, model });
     },
   });
 }
