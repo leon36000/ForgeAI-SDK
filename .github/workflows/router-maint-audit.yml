@@ -31,30 +31,59 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
-      - name: Collect Fallow dead-code evidence
+      - name: Compare dead-code configurations on ephemeral copies
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p maint002-evidence
           set +e
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/baseline.json
+          baseline_status=$?
           npx -y "fallow@$FALLOW_VERSION" dead-code --trace src/litellm-router/contracts.mjs:CONTRACT_PATTERNS --format json --quiet 2>/dev/null > maint002-evidence/contract-patterns-trace.json
           trace_status=$?
-          npx -y "fallow@$FALLOW_VERSION" list --entry-points --format json --quiet 2>/dev/null > maint002-evidence/entry-points.json
-          entry_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/dead-code.json
-          dead_status=$?
-          npx -y "fallow@$FALLOW_VERSION" config-schema --format json --quiet 2>/dev/null > maint002-evidence/config-schema.json
-          schema_status=$?
           set -e
-          printf 'trace=%s\nentry=%s\ndead=%s\nschema=%s\n' "$trace_status" "$entry_status" "$dead_status" "$schema_status" > maint002-evidence/exit-codes.txt
+          cat > .fallowrc.json <<'JSON'
+          {
+            "entry": [
+              "tests/**/*.test.mjs",
+              "scripts/check-manifest.mjs",
+              "scripts/security-audit.mjs",
+              "scripts/install-into-repo.mjs"
+            ]
+          }
+          JSON
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" list --entry-points --format json --quiet 2>/dev/null > maint002-evidence/config-entry-points.json
+          entry_status=$?
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/config-only.json
+          config_status=$?
+          set -e
+          cp src/litellm-router/contracts.mjs "$RUNNER_TEMP/contracts.before"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/litellm-router/contracts.mjs')
+          s=p.read_text()
+          needle='\nexport const CONTRACT_PATTERNS = Object.freeze({ IDENTIFIER, ENV_NAME, SHA256, ISO_DATE });\n'
+          if needle not in s: raise SystemExit('expected CONTRACT_PATTERNS export not found')
+          p.write_text(s.replace(needle,'\n'))
+          PY
+          npm test > maint002-evidence/npm-test-after-contract-removal.log
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > maint002-evidence/config-plus-contract-removal.json
+          removal_status=$?
+          set -e
+          mv "$RUNNER_TEMP/contracts.before" src/litellm-router/contracts.mjs
+          rm .fallowrc.json
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          printf 'baseline=%s\ntrace=%s\nentry=%s\nconfig=%s\nremoval=%s\n' "$baseline_status" "$trace_status" "$entry_status" "$config_status" "$removal_status" > maint002-evidence/exit-codes.txt
           test "$trace_status" -ne 2
           test "$entry_status" -ne 2
-          test "$dead_status" -ne 2
-          test "$schema_status" -ne 2
+          test "$config_status" -ne 2
+          test "$removal_status" -ne 2
           sha256sum maint002-evidence/*.json > maint002-evidence/SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-maint002-fallow-investigation-27418e31
+          name: forgeai-maint002-candidate-analysis-27418e31
           retention-days: 14
           if-no-files-found: error
           path: maint002-evidence
