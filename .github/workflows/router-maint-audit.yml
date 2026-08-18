@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - forgeai/router-maint-audit-0.3.0-alpha.1
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
