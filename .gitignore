@@ -1,0 +1,17 @@
+node_modules/
+.forgeai/runtime/
+.forgeai/worktrees/
+.forgeai/ledger/
+.forgeai/evidence/
+.scannerwork/
+coverage/
+*.log
+verification/
+verification-*.log
+TESTS_PASS
+TESTS_FAIL
+RELEASE_STATUS
+*.zip
+*.tar.gz
+
+codeql-results/

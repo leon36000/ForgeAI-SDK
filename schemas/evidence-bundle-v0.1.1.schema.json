@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgeai.local/schemas/evidence-bundle-v0.1.1.json",
+  "title": "ForgeAI EvidenceBundle v0.1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_envelope_hash",
+    "base_commit",
+    "final_commit",
+    "generated_at",
+    "changed_files",
+    "git",
+    "gates",
+    "acceptance",
+    "reviews",
+    "findings",
+    "artifacts",
+    "ledger_head",
+    "human_approval",
+    "bundle_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "forgeai.evidence-bundle.v0.1.1"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "task_envelope_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "base_commit": {
+      "type": "string"
+    },
+    "final_commit": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "changed_files": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "string"
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "head",
+        "clean",
+        "base_is_ancestor"
+      ],
+      "properties": {
+        "head": {
+          "type": "string"
+        },
+        "clean": {
+          "type": "boolean"
+        },
+        "base_is_ancestor": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "command",
+          "status",
+          "exit_code",
+          "duration_ms",
+          "stdout_sha256",
+          "stderr_sha256"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED",
+              "SKIPPED"
+            ]
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0
+          },
+          "stdout_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "stderr_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "signal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timed_out": {
+            "type": "boolean"
+          },
+          "output_overflow": {
+            "type": "boolean"
+          },
+          "stdout_path": {
+            "type": "string"
+          },
+          "stderr_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "model",
+          "session_id",
+          "verdict",
+          "context_fresh",
+          "findings_count",
+          "evidence_hash",
+          "final_commit"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED"
+            ]
+          },
+          "context_fresh": {
+            "type": "boolean"
+          },
+          "findings_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidence_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "final_commit": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 2048,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "severity": {
+            "enum": [
+              "info",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "RESOLVED",
+              "ACCEPTED_RISK",
+              "REJECTED"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "evidence_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "resolution": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 8192,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "bytes",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "ledger_head": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "last_hash"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "human_approval": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "commit",
+            "approver",
+            "approved_at"
+          ],
+          "properties": {
+            "status": {
+              "const": "APPROVED"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "approver": {
+              "type": "string"
+            },
+            "approved_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "bundle_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

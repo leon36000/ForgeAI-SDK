@@ -1,0 +1,41 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "ForgeAI-SDK-Foundation-0.1.4",
+  "documentNamespace": "https://forgeai.local/spdx/foundation-0.1.4-2026-08-14",
+  "creationInfo": {
+    "created": "2026-08-14T00:00:00Z",
+    "creators": [
+      "Tool: ForgeAI Foundation release process"
+    ]
+  },
+  "packages": [
+    {
+      "name": "@forgeai/foundation",
+      "SPDXID": "SPDXRef-Package-Foundation",
+      "versionInfo": "0.1.4",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": []
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Foundation"
+    }
+  ],
+  "annotations": [
+    {
+      "annotationDate": "2026-08-13T00:00:00Z",
+      "annotationType": "OTHER",
+      "annotator": "Tool: ForgeAI Foundation release process",
+      "comment": "Zero npm runtime and development dependencies. Requires Node.js and Git from the host."
+    }
+  ]
+}
