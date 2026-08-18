@@ -162,3 +162,76 @@ test('unqualified policy fails closed without network access', async () => {
   assert.equal(result.error.code, 'NO_QUALIFIED_ROUTE');
   assert.equal(called, false);
 });
+
+function routerRunBody(text) {
+  const startMarker = '  async function run(requestValue) {';
+  const endMarker = '\n\n  return Object.freeze({ policy, doctor, run });';
+  const start = text.indexOf(startMarker);
+  const end = text.indexOf(endMarker, start);
+  assert.notEqual(start, -1, 'run() declaration must remain discoverable');
+  assert.notEqual(end, -1, 'router factory return must remain discoverable');
+  return text.slice(start, end);
+}
+
+test('router run delegates orchestration through bounded private helpers', async () => {
+  const source = await readFile(new URL('../src/litellm-router/router.mjs', import.meta.url), 'utf8');
+  const expectedHelpers = [
+    'prepareRequest',
+    'selectQualifiedRoutes',
+    'createAttemptPlan',
+    'executeAttempt',
+    'validateBilledRouteLimits',
+    'recordBilledAccounting',
+    'accountBilledResponse',
+    'classifyAttempt',
+    'recordAttempt',
+    'runRouteAttempt',
+    'runCandidateRoute',
+    'finalizeResult',
+  ];
+  for (const helper of expectedHelpers) {
+    assert.match(source, new RegExp(`(?:async\\s+)?function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+
+  const body = routerRunBody(source);
+  const nonBlankLines = body.split('\n').filter((line) => line.trim().length > 0);
+  assert.ok(nonBlankLines.length <= 18, `run() must stay orchestration-only; found ${nonBlankLines.length} non-blank lines`);
+  for (const helper of ['prepareRequest', 'selectQualifiedRoutes', 'createAttemptPlan', 'runCandidateRoute', 'finalizeResult']) {
+    assert.match(body, new RegExp(`\\b${helper}\\b`), `run() must delegate through ${helper}`);
+  }
+});
+
+function clientInvokeBody(text) {
+  const start = text.indexOf('    async invoke(');
+  const end = text.indexOf('\n    },\n  });\n}', start);
+  assert.notEqual(start, -1, 'client invoke() declaration must remain discoverable');
+  assert.notEqual(end, -1, 'client factory return must remain discoverable');
+  return text.slice(start, end);
+}
+
+test('LiteLLM client invoke delegates request, HTTP, parsing, and billed-response shaping', async () => {
+  const source = await readFile(new URL('../src/litellm-router/client.mjs', import.meta.url), 'utf8');
+  const expectedHelpers = [
+    'validateApiKey',
+    'createRequestContext',
+    'buildChatPayload',
+    'performRequest',
+    'rejectHttpError',
+    'parseBilledPayload',
+    'finalizeSuccessfulResponse',
+  ];
+  for (const helper of expectedHelpers) {
+    assert.match(source, new RegExp(`(?:async\\s+)?function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+  const body = clientInvokeBody(source);
+  const nonBlankLines = body.split('\n').filter((line) => line.trim().length > 0);
+  assert.ok(nonBlankLines.length <= 16, `invoke() must stay orchestration-only; found ${nonBlankLines.length} non-blank lines`);
+  for (const helper of expectedHelpers) assert.match(body, new RegExp(`\\b${helper}\\b`), `invoke() must delegate through ${helper}`);
+});
+
+test('LiteLLM client decomposes bounded body, usage, and assistant-content validation', async () => {
+  const source = await readFile(new URL('../src/litellm-router/client.mjs', import.meta.url), 'utf8');
+  for (const helper of ['readStreamingBody', 'readBufferedBody', 'decodeResponseBytes', 'parseUsageTokens', 'assistantMessage']) {
+    assert.match(source, new RegExp(`(?:async\\s+)?function\\s+${helper}\\b`), `${helper} must be a private helper`);
+  }
+});

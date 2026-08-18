@@ -176,13 +176,15 @@ function parseRoute(value, index) {
   };
 }
 
-export function validateRouterPolicy(value) {
-  exactKeys(value, 'policy', ['schema_version', 'policy_id', 'endpoint_env', 'api_key_env', 'routes', 'capability_routes']);
-  if (value.schema_version !== LITELLM_ROUTER_POLICY_SCHEMA_VERSION) fail('policy.schema_version', 'is unsupported');
+function parsePolicyRoutes(value) {
   if (!Array.isArray(value.routes) || value.routes.length < 1 || value.routes.length > LITELLM_ROUTER_LIMITS.max_routes) fail('policy.routes', 'has an invalid length');
   const routes = value.routes.map(parseRoute);
   const routeIds = routes.map((route) => route.route_id);
   if (new Set(routeIds).size !== routeIds.length) fail('policy.routes', 'route_id values must be unique');
+  return routes;
+}
+
+function parseCapabilityRoutes(value, routes) {
   object(value.capability_routes, 'policy.capability_routes');
   const capabilityKeys = Object.keys(value.capability_routes);
   if (capabilityKeys.length < 1 || capabilityKeys.length > LITELLM_ROUTER_LIMITS.max_capabilities) fail('policy.capability_routes', 'has an invalid number of capabilities');
@@ -198,6 +200,14 @@ export function validateRouterPolicy(value) {
     }
     capabilityRoutes[capability] = ids;
   }
+  return capabilityRoutes;
+}
+
+export function validateRouterPolicy(value) {
+  exactKeys(value, 'policy', ['schema_version', 'policy_id', 'endpoint_env', 'api_key_env', 'routes', 'capability_routes']);
+  if (value.schema_version !== LITELLM_ROUTER_POLICY_SCHEMA_VERSION) fail('policy.schema_version', 'is unsupported');
+  const routes = parsePolicyRoutes(value);
+  const capabilityRoutes = parseCapabilityRoutes(value, routes);
   return deepFreeze({
     schema_version: LITELLM_ROUTER_POLICY_SCHEMA_VERSION,
     policy_id: string(value.policy_id, 'policy.policy_id', { max: 128, pattern: IDENTIFIER }),
