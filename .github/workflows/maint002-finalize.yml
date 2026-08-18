@@ -1,0 +1,110 @@
+name: forgeai-maint002-finalize
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: forgeai/fallow-signal-0.3.0-alpha.1
+  EXPECTED_INPUT_SHA: 27418e312048858ca4804ec97509ba8b810ddd05
+  BASE_SHA: 27418e312048858ca4804ec97509ba8b810ddd05
+  PATCH_SHA256: e5d3eefe84c3b8fb5d84e04780371cc4e493aff7846b9ff4f8e71518ea46e142
+  FALLOW_VERSION: '3.10.0'
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact MAINT-002 branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          path: release
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Refuse moved branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_INPUT_SHA"
+          test "$(git merge-base "$BASE_SHA" HEAD)" = "$BASE_SHA"
+      - name: Decode and apply exact TDD patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode transport/.forgeai-release/maint002.patch.gz.b64 > "$RUNNER_TEMP/maint002.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/maint002.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/maint002.patch.gz"
+          gzip --decompress --stdout "$RUNNER_TEMP/maint002.patch.gz" | git -C release apply --index --binary
+          git -C release diff --cached --check
+          test -n "$(git -C release diff --cached --name-only)"
+      - name: Regenerate exact source manifest
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/source-manifest.mjs
+          git add SOURCE_MANIFEST.json
+          git diff --cached --check
+      - name: Commit sealed MAINT-002 tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'chore: align Fallow entry points and dead-code signal'
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run deterministic quality gates
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test | tee "$RUNNER_TEMP/tests.log"
+          grep -q '# tests 291' "$RUNNER_TEMP/tests.log"
+          grep -q '# fail 0' "$RUNNER_TEMP/tests.log"
+          npm run lint
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Prove Fallow signal cleanup
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$RUNNER_TEMP/dead-code.json"
+          dead_status=$?
+          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet 2>/dev/null > "$RUNNER_TEMP/security.json"
+          security_status=$?
+          set -e
+          test "$dead_status" -ne 2
+          test "$security_status" -ne 2
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const dead = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/dead-code.json`, 'utf8'));
+          const sec = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/security.json`, 'utf8'));
+          if (dead.summary.unused_files !== 0) throw new Error(`unused files remain: ${dead.summary.unused_files}`);
+          if (dead.unused_exports.some((x) => x.export_name === 'CONTRACT_PATTERNS')) throw new Error('CONTRACT_PATTERNS still reported unused');
+          if ((sec.findings ?? []).some((x) => x.status === 'finding' || x.severity === 'critical' || x.severity === 'high')) throw new Error('Fallow security finding introduced');
+          console.log(JSON.stringify({unused_files: dead.summary.unused_files, unused_exports: dead.summary.unused_exports, security_findings: sec.summary?.findings ?? 0}, null, 2));
+          NODE
+      - name: Push sealed MAINT-002 commit
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
