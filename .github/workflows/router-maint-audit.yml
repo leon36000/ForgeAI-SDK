@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: 85a8f235e292af5fa656849efc7d67fe677a33ab
-  RELEASE_TREE: 9c4410606e64608959852374f828f0e604bafaee
+  RELEASE_SHA: 8ffce3e784ba22d0dae69271e8b7f3ddfcc82464
+  RELEASE_TREE: 62df8e81f8914e8d85c25f447e8b231da89445ea
   BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
   FALLOW_VERSION: '3.10.0'
 
@@ -61,7 +61,7 @@ jobs:
           sha256sum fallow-evidence/*.json > fallow-evidence/SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-router-maint-fallow-85a8f235
+          name: forgeai-router-maint-fallow-8ffce3e7
           retention-days: 14
           if-no-files-found: error
           path: fallow-evidence
