@@ -10,5 +10,7 @@
 - **Acceptée**: CodeQL/SARIF est un gate déterministe; toute alerte bloque.
 - **Acceptée**: SonarQube demeure un gate additionnel optionnel jusqu’à activation explicite.
 - **Acceptée**: aucune fusion automatique dans `main`.
+- **Acceptée**: `PreToolUse` ForgeAI est exhaustif (matcher omis) afin qu’un nouveau nom d’outil Claude Code ne puisse pas contourner la policy; les outils non modélisés restent fail-closed.
+- **Acceptée**: `Agent` est autorisé uniquement au thread principal portant un TaskEnvelope `orchestrator`; tout appel depuis un subagent, un autre rôle ou un mode de permissions bypass est bloqué.
 - **PENDING**: smoke tests live avec la version exacte de Claude Code.
 - **PENDING**: review indépendante humaine ou système distinct qualifié sur le HEAD final.

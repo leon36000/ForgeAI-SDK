@@ -6,6 +6,7 @@ import { normalizedTaskEnvelope } from './contracts.mjs';
 
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS']);
+const SESSION_CONTROL_TOOLS = new Set(['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TodoWrite', 'ToolSearch']);
 const PROTECTED_PATHS = Object.freeze([
   '.git/**', '.forgeai/**', '.claude/settings.json', '.claude/settings.local.json', '.claude/agents/**', '.claude/hooks/**',
   '.env', '.env.*', '**/.env', '**/.env.*', '**/*.pem', '**/*.key', '**/id_rsa', '**/id_rsa.*',
@@ -79,13 +80,22 @@ export function checkNetwork(taskValue,urlValue){
   return allowed?decision(true,'ALLOW','network host allowed',{host}):decision(false,'NETWORK_DENIED',`host is not allowed: ${host}`);
 }
 
-export function checkToolUse(taskValue,toolName,input={}){
+function checkAgentDelegation(task, context = {}) {
+  if (context.permission_mode === 'bypassPermissions') return decision(false,'PERMISSION_BYPASS_DENIED','Agent delegation is forbidden while Claude permissions are bypassed');
+  if (context.agent_id || task.delegation.agent_depth !== 0) return decision(false,'NESTED_AGENT_DENIED','nested Agent delegation is forbidden');
+  if (task.role !== 'orchestrator') return decision(false,'ROLE_DELEGATION_DENIED',`${task.role} cannot delegate agents`);
+  return decision(true,'ALLOW','main-thread orchestrator delegation allowed',{max_parallel_agents:task.delegation.max_parallel_agents});
+}
+
+export function checkToolUse(taskValue,toolName,input={},context={}){
   const task=normalizedTaskEnvelope(taskValue);
   if(typeof toolName!=='string'||toolName.length===0)return decision(false,'TOOL_INVALID','tool name must be a non-empty string');
   if(WRITE_TOOLS.has(toolName)){const path=input.file_path??input.path??input.notebook_path;return checkPath(task,path,{write:true});}
   if(READ_TOOLS.has(toolName)){const path=input.file_path??input.path??'.';return checkPath(task,path,{write:false});}
   if(toolName==='Bash')return checkCommand(task,input.command);
   if(toolName==='WebFetch')return checkNetwork(task,input.url);
+  if(toolName==='Agent')return checkAgentDelegation(task,context);
+  if(SESSION_CONTROL_TOOLS.has(toolName))return decision(true,'ALLOW','session-control tool allowed');
   if(toolName.startsWith('mcp__')){
     if(task.mode==='EXECUTE')return decision(false,'MCP_EXECUTE_DENIED','external MCP calls are advisory only during EXECUTE');
     if(!task.allowed_mcp_tools.includes(toolName))return decision(false,'MCP_TOOL_NOT_DECLARED','MCP tool is not allowlisted');

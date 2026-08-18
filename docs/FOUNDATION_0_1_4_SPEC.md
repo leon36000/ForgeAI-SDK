@@ -16,6 +16,10 @@ Les lectures load-bearing utilisent une ouverture no-follow, exigent un fichier 
 
 Un EvidenceBundle est borné à 8 MiB. Les collections ont des maxima explicites. Les objets imbriqués refusent les clés inconnues. Chaque review contient rôle, modèle, session, verdict, contexte frais, nombre de findings, hash de preuve et commit final. Une session identique au writer ou un commit différent bloque.
 
+## Surface d’outils Claude Code
+
+`PreToolUse` ForgeAI s’applique à tous les appels d’outil sans matcher restrictif. La policy interne autorise explicitement les surfaces modélisées et bloque les nouveaux outils par défaut. `Agent` n’est utilisable que par l’orchestrateur du thread principal; un subagent ne peut pas créer un autre agent. Les shells ou réseaux alternatifs non modélisés, notamment PowerShell et WebSearch, restent `BLOCKED` jusqu’à qualification explicite.
+
 ## Gates
 
 - R0: contrat, ledger, Git propre/scope, tests requis, acceptance, manifestes.

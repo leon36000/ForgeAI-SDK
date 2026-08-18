@@ -140,3 +140,58 @@ test('recursive forced removal of workspace root is denied',async()=>{const w=aw
 test('recursive forced removal outside workspace is denied',async()=>{const w=await tempWorkspace();const command='rm -rf ../outside';const t=sampleTask(w,{allowed_bash_commands:[...sampleTask(w).allowed_bash_commands,command]});assert.equal(checkCommand(t,command).code,'COMMAND_DESTRUCTIVE');});
 test('non HTTP network protocols are denied',async()=>{const w=await tempWorkspace();const t=sampleTask(w,{allowed_network_hosts:['example.com']});assert.equal(checkNetwork(t,'file:///etc/passwd').code,'NETWORK_PROTOCOL_DENIED');assert.equal(checkNetwork(t,'ftp://example.com/x').code,'NETWORK_PROTOCOL_DENIED');});
 test('missing tool name fails closed without throwing',async()=>{const w=await tempWorkspace();assert.equal(checkToolUse(sampleTask(w),undefined,{}).code,'TOOL_INVALID');});
+
+
+test('current Claude Code shell, web, monitor and LSP surfaces fail closed until modeled', async () => {
+  const workspace = await tempWorkspace();
+  const task = sampleTask(workspace);
+  for (const tool of ['PowerShell', 'WebSearch', 'Monitor', 'LSP', 'ReadMcpResourceTool', 'RemoteTrigger', 'TeamCreate']) {
+    assert.equal(checkToolUse(task, tool, {}).allowed, false, `${tool} must fail closed`);
+  }
+});
+
+test('session-control tools with no repository or network side effect remain available', async () => {
+  const workspace = await tempWorkspace();
+  const task = sampleTask(workspace);
+  for (const tool of ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TodoWrite', 'ToolSearch']) {
+    assert.equal(checkToolUse(task, tool, {}).allowed, true, `${tool} should remain available`);
+  }
+});
+
+test('writer cannot delegate through Agent', async () => {
+  const workspace = await tempWorkspace();
+  assert.equal(checkToolUse(sampleTask(workspace), 'Agent', { prompt: 'inspect', subagent_type: 'Explore' }).code, 'ROLE_DELEGATION_DENIED');
+});
+
+test('main-thread orchestrator may dispatch a read-only Agent', async () => {
+  const workspace = await tempWorkspace();
+  const task = sampleTask(workspace, {
+    role: 'orchestrator',
+    mode: 'CONSULT',
+    execution: { qualified: true, sandbox_required: false, sandbox_verified: false },
+    delegation: { agent_depth: 0, max_parallel_agents: 4, allow_nested_agents: false },
+  });
+  assert.equal(checkToolUse(task, 'Agent', { prompt: 'inspect', subagent_type: 'Explore' }, { agent_id: null, permission_mode: 'default' }).allowed, true);
+});
+
+test('subagent cannot recursively dispatch Agent', async () => {
+  const workspace = await tempWorkspace();
+  const task = sampleTask(workspace, {
+    role: 'orchestrator',
+    mode: 'CONSULT',
+    execution: { qualified: true, sandbox_required: false, sandbox_verified: false },
+    delegation: { agent_depth: 0, max_parallel_agents: 4, allow_nested_agents: false },
+  });
+  assert.equal(checkToolUse(task, 'Agent', { prompt: 'nested', subagent_type: 'Explore' }, { agent_id: 'agent-child', permission_mode: 'default' }).code, 'NESTED_AGENT_DENIED');
+});
+
+test('orchestrator delegation is denied while Claude permissions are bypassed', async () => {
+  const workspace = await tempWorkspace();
+  const task = sampleTask(workspace, {
+    role: 'orchestrator',
+    mode: 'CONSULT',
+    execution: { qualified: true, sandbox_required: false, sandbox_verified: false },
+    delegation: { agent_depth: 0, max_parallel_agents: 4, allow_nested_agents: false },
+  });
+  assert.equal(checkToolUse(task, 'Agent', { prompt: 'inspect', subagent_type: 'Explore' }, { permission_mode: 'bypassPermissions' }).code, 'PERMISSION_BYPASS_DENIED');
+});

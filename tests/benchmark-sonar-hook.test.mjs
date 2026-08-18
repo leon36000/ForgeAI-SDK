@@ -34,6 +34,23 @@ test('PreToolUse hook allows declared command', async () => {
 test('PreToolUse hook blocks undeclared command with exit 2', async () => {
   const workspace=await tempWorkspace(); const task=sampleTask(workspace); const taskPath=join(workspace,'task.json'); await writeFile(taskPath,JSON.stringify(task)); const previous=process.env.FORGEAI_TASK_ENVELOPE; process.env.FORGEAI_TASK_ENVELOPE=taskPath; try { const result=await handleHook('PreToolUse',{tool_name:'Bash',tool_input:{command:'npm run evil'}}); assert.equal(result.allow,false); assert.equal(result.exitCode,2); } finally { if(previous===undefined) delete process.env.FORGEAI_TASK_ENVELOPE; else process.env.FORGEAI_TASK_ENVELOPE=previous; }
 });
+
+test('PreToolUse hook allows main-thread orchestrator Agent delegation', async () => {
+  const workspace=await tempWorkspace();
+  const task=sampleTask(workspace,{role:'orchestrator',mode:'CONSULT',execution:{qualified:true,sandbox_required:false,sandbox_verified:false},delegation:{agent_depth:0,max_parallel_agents:4,allow_nested_agents:false}});
+  const taskPath=join(workspace,'task.json'); await writeFile(taskPath,JSON.stringify(task));
+  const previous=process.env.FORGEAI_TASK_ENVELOPE; process.env.FORGEAI_TASK_ENVELOPE=taskPath;
+  try { const result=await handleHook('PreToolUse',{tool_name:'Agent',tool_input:{prompt:'inspect',subagent_type:'Explore'},permission_mode:'default'}); assert.equal(result.allow,true); assert.equal(result.exitCode,0); }
+  finally { if(previous===undefined) delete process.env.FORGEAI_TASK_ENVELOPE; else process.env.FORGEAI_TASK_ENVELOPE=previous; }
+});
+test('PreToolUse hook forwards subagent context so nested Agent calls fail closed', async () => {
+  const workspace=await tempWorkspace();
+  const task=sampleTask(workspace,{role:'orchestrator',mode:'CONSULT',execution:{qualified:true,sandbox_required:false,sandbox_verified:false},delegation:{agent_depth:0,max_parallel_agents:4,allow_nested_agents:false}});
+  const taskPath=join(workspace,'task.json'); await writeFile(taskPath,JSON.stringify(task));
+  const previous=process.env.FORGEAI_TASK_ENVELOPE; process.env.FORGEAI_TASK_ENVELOPE=taskPath;
+  try { const result=await handleHook('PreToolUse',{tool_name:'Agent',tool_input:{prompt:'nested',subagent_type:'Explore'},agent_id:'agent-child',agent_type:'Explore',permission_mode:'default'}); assert.equal(result.allow,false); assert.equal(result.exitCode,2); }
+  finally { if(previous===undefined) delete process.env.FORGEAI_TASK_ENVELOPE; else process.env.FORGEAI_TASK_ENVELOPE=previous; }
+});
 test('TaskCompleted blocks without proof', async () => {
   const workspace=await tempWorkspace(); const previous=process.env.FORGEAI_PROOF_RESULT; process.env.FORGEAI_PROOF_RESULT=join(workspace,'missing.json'); try { const result=await handleHook('TaskCompleted',{}); assert.equal(result.allow,false); assert.equal(result.exitCode,2); } finally { if(previous===undefined) delete process.env.FORGEAI_PROOF_RESULT; else process.env.FORGEAI_PROOF_RESULT=previous; }
 });

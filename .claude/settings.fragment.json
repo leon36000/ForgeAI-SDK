@@ -17,7 +17,6 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:Edit|Write|NotebookEdit|MultiEdit|Bash|WebFetch|Read|Glob|Grep|LS|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
