@@ -1,9 +1,9 @@
-name: forgeai-maint002-final-audit
+name: forgeai-maint003-unused-export-investigation
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - forgeai/router-maint-audit-0.3.0-alpha.1
 
 permissions:
   contents: read
@@ -11,11 +11,10 @@ permissions:
 env:
   RELEASE_SHA: ef87a1603c309a9072de54bbdcb7fad2f3df6dba
   RELEASE_TREE: a72fe77b866bcbe9bc0c88da701b537a0eec9ecc
-  BASE_SHA: 27418e312048858ca4804ec97509ba8b810ddd05
   FALLOW_VERSION: '3.10.0'
 
 jobs:
-  audit:
+  investigate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -32,53 +31,55 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$RELEASE_TREE"
-          git merge-base --is-ancestor "$BASE_SHA" "$RELEASE_SHA"
-      - name: Re-run deterministic gates
+      - name: Trace all remaining Fallow unused exports
         shell: bash
         run: |
           set -euo pipefail
-          npm test
-          npm run verify
-          grep -q '^PASS ' verification/VERIFIED
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
-      - name: Run exact Fallow analyses
-        shell: bash
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/maint002-final"
-          mkdir -p "$evidence"
+          evidence="$RUNNER_TEMP/maint003-unused-exports"
+          mkdir -p "$evidence/traces"
+          cat > "$evidence/targets.tsv" <<'EOF'
+          src/command.mjs	COMMAND_LIMITS
+          src/contracts.mjs	TASK_SCHEMA_VERSION
+          src/contracts.mjs	ROLES
+          src/contracts.mjs	MODES
+          src/contracts.mjs	RISKS
+          src/contracts.mjs	CONTRACT_LIMITS
+          src/evidence.mjs	EVIDENCE_LIMITS
+          src/file-tree.mjs	FILE_TREE_LIMITS
+          src/glob.mjs	GLOB_LIMITS
+          src/ledger.mjs	LEDGER_GENESIS
+          src/ledger.mjs	LEDGER_LIMITS
+          src/policy.mjs	normalizeRepoPath
+          src/policy.mjs	POLICY_CONSTANTS
+          src/utils.mjs	normalizeWhitespace
+          src/utils.mjs	UTILITY_LIMITS
+          tests/litellm-router-helpers.mjs	EVIDENCE_HASH
+          EOF
+          : > "$evidence/status.tsv"
+          : > "$evidence/references.tsv"
+          while IFS=$'\t' read -r file symbol; do
+            slug="$(printf '%s__%s' "$file" "$symbol" | tr '/.' '__')"
+            set +e
+            npx -y "fallow@$FALLOW_VERSION" dead-code --trace "$file:$symbol" --format json --quiet 2>/dev/null > "$evidence/traces/$slug.json"
+            status=$?
+            set -e
+            test "$status" -ne 2
+            printf '%s\t%s\t%s\n' "$file" "$symbol" "$status" >> "$evidence/status.tsv"
+            refs="$(rg -n --hidden --glob '!SOURCE_MANIFEST.json' --glob '!.git/**' --glob '!node_modules/**' "\\b${symbol}\\b" . || true)"
+            count="$(printf '%s\n' "$refs" | sed '/^$/d' | wc -l | tr -d ' ')"
+            printf '%s\t%s\t%s\n' "$file" "$symbol" "$count" >> "$evidence/references.tsv"
+            printf '%s\n' "$refs" > "$evidence/traces/$slug.rg.txt"
+          done < "$evidence/targets.tsv"
           set +e
-          npx -y "fallow@$FALLOW_VERSION" audit --base "$BASE_SHA" --format json --quiet --explain 2>/dev/null > "$evidence/audit.json"
-          audit_status=$?
-          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-files --unused-exports --explain 2>/dev/null > "$evidence/dead-code.json"
+          npx -y "fallow@$FALLOW_VERSION" dead-code --format json --quiet --unused-exports --explain 2>/dev/null > "$evidence/dead-code.json"
           dead_status=$?
-          npx -y "fallow@$FALLOW_VERSION" health --complexity --top 200 --sort cyclomatic --format json --quiet --explain 2>/dev/null > "$evidence/health.json"
-          health_status=$?
-          npx -y "fallow@$FALLOW_VERSION" security --changed-since "$BASE_SHA" --surface --format json --quiet 2>/dev/null > "$evidence/security.json"
-          security_status=$?
           set -e
-          printf 'audit=%s\ndead=%s\nhealth=%s\nsecurity=%s\n' "$audit_status" "$dead_status" "$health_status" "$security_status" > "$evidence/exit-codes.txt"
-          test "$audit_status" -ne 2
           test "$dead_status" -ne 2
-          test "$health_status" -ne 2
-          test "$security_status" -ne 2
-          node --input-type=module - "$evidence/dead-code.json" "$evidence/security.json" <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const [deadPath, securityPath] = process.argv.slice(2);
-          const dead = JSON.parse(readFileSync(deadPath, 'utf8'));
-          const security = JSON.parse(readFileSync(securityPath, 'utf8'));
-          const unusedFiles = dead.unused_files ?? dead.unusedFiles ?? [];
-          const unusedExports = dead.unused_exports ?? dead.unusedExports ?? [];
-          if (unusedFiles.length !== 0) throw new Error(`expected zero unused files, got ${unusedFiles.length}`);
-          if (unusedExports.some((item) => JSON.stringify(item).includes('CONTRACT_PATTERNS'))) throw new Error('CONTRACT_PATTERNS still reported unused');
-          const findings = security.findings ?? security.issues ?? security.security_findings ?? [];
-          if (findings.length !== 0) throw new Error(`expected zero security findings, got ${findings.length}`);
-          console.log(JSON.stringify({ unused_files: unusedFiles.length, unused_exports: unusedExports.length, security_findings: findings.length }));
-          NODE
-          sha256sum "$evidence"/*.json > "$evidence/SHA256SUMS.txt"
+          printf 'dead_code_exit=%s\n' "$dead_status" > "$evidence/exit-codes.txt"
+          sha256sum "$evidence"/dead-code.json "$evidence"/traces/*.json > "$evidence/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v7
         with:
-          name: forgeai-maint002-final-fallow-ef87a160
+          name: forgeai-maint003-unused-export-investigation-ef87a160
           retention-days: 14
           if-no-files-found: error
-          path: ${{ runner.temp }}/maint002-final
+          path: ${{ runner.temp }}/maint003-unused-exports
