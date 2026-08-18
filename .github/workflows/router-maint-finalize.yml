@@ -10,7 +10,7 @@ permissions:
 
 env:
   TARGET_BRANCH: forgeai/router-maintainability-0.3.0-alpha.1
-  EXPECTED_INPUT_SHA: 8cceaa86e092e04ab967fa9f0a9eaf0ef05a81cf
+  EXPECTED_INPUT_SHA: cb9b76686914aaed46a2a77e782212e73206ca44
   BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
 
 jobs:
@@ -78,4 +78,4 @@ jobs:
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
 
-# Trigger after workflow creation.
+# Trigger second bounded refactor finalization.
