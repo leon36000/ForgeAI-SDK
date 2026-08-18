@@ -1,0 +1,103 @@
+name: forgeai-router-maint-complete-finalize
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: forgeai/router-maintainability-0.3.0-alpha.1
+  EXPECTED_INPUT_SHA: 55d11c5f3a9591d8aa2b38fdf067e69dc81af6f9
+  BASE_SHA: ba18c9d8a781080905c8c9d12d09076fb9515a7e
+  PATCH_SHA256: 2dd0a43592c560c4c28d488ca5e24596e6878caa4b75aebb835172778ee297fd
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact maintenance branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          path: release
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Refuse moved branch or wrong base
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_INPUT_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+      - name: Decode and apply exact final TDD patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode transport/.forgeai-release/maint-complete.patch.gz.b64 > "$RUNNER_TEMP/maint-complete.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/maint-complete.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/maint-complete.patch.gz"
+          gzip --decompress --stdout "$RUNNER_TEMP/maint-complete.patch.gz" | git -C release apply --index --binary
+          git -C release diff --cached --check
+          test -n "$(git -C release diff --cached --name-only)"
+      - name: Regenerate source manifest
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/source-manifest.mjs
+          git add SOURCE_MANIFEST.json
+          git diff --cached --check
+      - name: Commit complete maintainability tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'refactor: complete LiteLLM maintainability pass'
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run full deterministic gates
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test | tee "$RUNNER_TEMP/tests.log"
+          grep -q '# tests 289' "$RUNNER_TEMP/tests.log"
+          grep -q '# fail 0' "$RUNNER_TEMP/tests.log"
+          npm run lint
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Prove router remains read-only and unqualified
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node bin/forgeai-litellm-router.mjs doctor > "$RUNNER_TEMP/doctor.json"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const doctor = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/doctor.json`, 'utf8'));
+          if (doctor.status !== 'BLOCKED' || doctor.ready_routes !== 0) throw new Error('router unexpectedly ready');
+          if (!doctor.routes.every((route) => route.status === 'UNQUALIFIED' && route.ready === false)) throw new Error('route unexpectedly qualified');
+          NODE
+      - name: Push exact completed maintenance commit
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
