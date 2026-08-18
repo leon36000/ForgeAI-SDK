@@ -1,0 +1,109 @@
+name: publish-foundation-control-tools-refinement
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 298438d35014ddf4b30313b02de2b8849c7a4eb4
+  BASE_TREE: 3a2f4a8ec1ea62f7c98b3ba81cee35d9ede3e227
+  EXPECTED_TREE: e5e4f0d4943826fe60a229f95f9b6b209d146959
+  PATCH_SHA256: 80c991eb5284e33a5260e38f264bc318ccd1beba9dbc03b7a2701bbc27df728b
+  PATCH_B64_BYTES: '11144'
+  TARGET_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact Foundation parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Reassemble and verify sealed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root='transport/.forgeai-release/foundation-control-tools'
+          printf '%s  %s\n' '487aec74997792635ac58ea1f1bcba8fecaeff77d70764fabf2a68a69f3d04b7' "$root/chunk-00.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '65d80506051839b333272ad30a43f60aa7e0182317e76c7f42b6560a5ea83bcc' "$root/chunk-01.txt" | sha256sum --check --strict
+          printf '%s  %s\n' 'bbae54a2b98dbd9f192df516bfbc12a52912b7de6cbcf1915914cc3314da87d6' "$root/chunk-02.txt" | sha256sum --check --strict
+          printf '%s  %s\n' '1d2088830011a7f4ef110a7bc1464fb83055760c40a5aa6b4d9d208923c1f392' "$root/chunk-03.txt" | sha256sum --check --strict
+          cat "$root/chunk-00.txt" "$root/chunk-01.txt" "$root/chunk-02.txt" "$root/chunk-03.txt" > "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64"
+          test "$(wc -c < "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64")" -eq "$PATCH_B64_BYTES"
+          base64 --decode "$RUNNER_TEMP/foundation-control-tools.patch.gz.b64" > "$RUNNER_TEMP/foundation-control-tools.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-control-tools.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/foundation-control-tools.patch.gz"
+      - name: Refuse a moved Foundation branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$BASE_TREE"
+      - name: Apply exact patch and verify Git tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$RUNNER_TEMP/foundation-control-tools.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit sealed Foundation tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'fix: allow current bounded Claude control tools'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run deterministic release gates
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { checkToolUse } from './src/policy.mjs';
+          const task = JSON.parse(readFileSync('./examples/task-envelope.json', 'utf8'));
+          const safe = ['ListAgents','ReportFindings','Skill','TaskOutput','TaskStop','WaitForMcpServers'];
+          const effectful = ['Artifact','CronCreate','CronDelete','EnterWorktree','PushNotification','RemoteTrigger','ScheduleWakeup','SendMessage','SendUserFile','ShareOnboardingGuide','TeamCreate','TeamDelete','Workflow'];
+          for (const tool of safe) {
+            const result = checkToolUse(task, tool, {});
+            if (!result.allowed || result.code !== 'ALLOW') throw new Error(`${tool} must remain allowed`);
+          }
+          for (const tool of effectful) {
+            const result = checkToolUse(task, tool, {});
+            if (result.allowed || result.code !== 'TOOL_NOT_DECLARED') throw new Error(`${tool} must remain fail-closed`);
+          }
+          const settings = JSON.parse(readFileSync('.claude/settings.fragment.json', 'utf8'));
+          const entries = settings.hooks?.PreToolUse ?? [];
+          if (entries.length !== 1 || Object.hasOwn(entries[0], 'matcher')) throw new Error('ForgeAI PreToolUse must remain matcherless/catch-all');
+          NODE
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push exact Foundation branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$BASE_SHA" origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
