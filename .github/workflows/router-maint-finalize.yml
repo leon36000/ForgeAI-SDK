@@ -77,3 +77,5 @@ jobs:
           set -euo pipefail
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
           printf 'HEAD=%s\nTREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
+
+# Trigger after workflow creation.
