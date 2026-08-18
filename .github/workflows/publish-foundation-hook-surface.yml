@@ -1,0 +1,90 @@
+name: publish-foundation-hook-surface-hardening
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 25105445c1302ca002ac2532ec4ba10b16733126
+  EXPECTED_TREE: 3a2f4a8ec1ea62f7c98b3ba81cee35d9ede3e227
+  PATCH_SHA256: 91d3085c384c4b8ad54ec4656da52224c6deabee1a82d072c1ed1348295e1b01
+  PATCH_B64_BYTES: '17420'
+  TARGET_BRANCH: forgeai/foundation-0.1.4
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout sealed transport
+        uses: actions/checkout@v6
+        with:
+          path: transport
+      - name: Checkout exact Foundation parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          path: release
+      - name: Decode and verify sealed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='transport/.forgeai-release/foundation-hook-surface/patch.gz.b64'
+          test "$(wc -c < "$payload")" -eq "$PATCH_B64_BYTES"
+          base64 --decode "$payload" > "$RUNNER_TEMP/foundation-hook-surface.patch.gz"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/foundation-hook-surface.patch.gz" | sha256sum --check --strict
+          gzip --test "$RUNNER_TEMP/foundation-hook-surface.patch.gz"
+      - name: Refuse a moved Foundation branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+      - name: Apply exact patch and verify Git tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip --decompress --stdout "$RUNNER_TEMP/foundation-hook-surface.patch.gz" | git apply --index --binary
+          git diff --cached --check
+          actual_tree="$(git write-tree)"
+          printf 'EXPECTED_TREE=%s\nACTUAL_TREE=%s\n' "$EXPECTED_TREE" "$actual_tree"
+          test "$actual_tree" = "$EXPECTED_TREE"
+      - name: Commit sealed Foundation tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ForgeAI Release Bot'
+          git config user.email 'forgeai-release@users.noreply.github.com'
+          git commit -m 'fix: fail closed on Claude Code tool-surface drift'
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Run deterministic release gates
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          grep -q '^PASS ' verification/VERIFIED
+          node --input-type=module - <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const settings = JSON.parse(readFileSync('.claude/settings.fragment.json', 'utf8'));
+          const entries = settings.hooks?.PreToolUse ?? [];
+          if (entries.length !== 1 || Object.hasOwn(entries[0], 'matcher')) throw new Error('ForgeAI PreToolUse must be matcherless/catch-all');
+          NODE
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Push exact Foundation branch
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$BASE_SHA" origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'RELEASE_COMMIT=%s\nRELEASE_TREE=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
